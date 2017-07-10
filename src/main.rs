@@ -9,9 +9,9 @@ use std::io::{Read, Write};
 use std::rc::{Rc, Weak};
 use std::str;
 
-use syscall::data::Packet;
+use syscall::data::{Packet, Stat};
 use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT, EPIPE, EWOULDBLOCK};
-use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
+use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK, MODE_CHR};
 use syscall::scheme::SchemeMut;
 
 pub struct PtyScheme {
@@ -134,6 +134,15 @@ impl SchemeMut for PtyScheme {
         }
 
         Err(Error::new(EBADF))
+    }
+
+    fn fstat(&mut self, _id: usize, stat: &mut Stat) -> Result<usize> {
+        *stat = Stat {
+            st_mode: MODE_CHR | 0o666,
+            ..Default::default()
+        };
+
+        Ok(0)
     }
 
     fn fsync(&mut self, id: usize) -> Result<usize> {
