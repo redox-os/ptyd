@@ -14,17 +14,27 @@ use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT, EPIPE, EWOULDBLOCK};
 use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK, MODE_CHR};
 use syscall::scheme::SchemeMut;
 
+#[derive(Clone)]
+enum Handle {
+    Master(PtyMaster),
+    Slave(PtySlave),
+}
+
 pub struct PtyScheme {
     next_id: usize,
-    ptys: (BTreeMap<usize, PtyMaster>, BTreeMap<usize, PtySlave>)
+    handles: BTreeMap<usize, Handle>,
 }
 
 impl PtyScheme {
     fn new() -> Self {
         PtyScheme {
             next_id: 0,
-            ptys: (BTreeMap::new(), BTreeMap::new())
+            handles: BTreeMap::new(),
         }
+    }
+
+    fn get_handle(&self, id: usize) -> Option<Handle> {
+        self.handles.get(&id).map(|handle| handle.clone())
     }
 }
 
@@ -36,111 +46,84 @@ impl SchemeMut for PtyScheme {
             let id = self.next_id;
             self.next_id += 1;
 
-            self.ptys.0.insert(id, PtyMaster::new(id, flags));
+            self.handles.insert(id, Handle::Master(PtyMaster::new(id, flags)));
 
             Ok(id)
         } else {
             let master_id = path.parse::<usize>().or(Err(Error::new(EINVAL)))?;
-            let master = self.ptys.0.get(&master_id).map(|pipe| pipe.clone()).ok_or(Error::new(ENOENT))?;
+            let handle = self.get_handle(master_id).ok_or(Error::new(ENOENT))?;
+            if let Handle::Master(master) = handle {
+                let id = self.next_id;
+                self.next_id += 1;
 
-            let id = self.next_id;
-            self.next_id += 1;
+                self.handles.insert(id, Handle::Slave(PtySlave::new(&master, flags)));
 
-            self.ptys.1.insert(id, PtySlave::new(&master, flags));
-
-            Ok(id)
+                Ok(id)
+            } else {
+                Err(Error::new(ENOENT))
+            }
         }
     }
 
-    fn dup(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
+    fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
         if ! buf.is_empty() {
             return Err(Error::new(EINVAL));
         }
 
-        /* TODO CLOEXEC - Master cannot be cloned
-        let master_opt = self.ptys.0.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = master_opt {
-            let pipe_id = self.next_id;
-            self.next_id += 1;
-            self.ptys.0.insert(pipe_id, pipe);
-            return Ok(pipe_id);
-        }
-        */
+        let handle = self.get_handle(old_id).ok_or(Error::new(EBADF))?;
 
-        let slave_opt = self.ptys.1.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = slave_opt {
-            let pipe_id = self.next_id;
-            self.next_id += 1;
-            self.ptys.1.insert(pipe_id, pipe);
-            return Ok(pipe_id);
-        }
+        let id = self.next_id;
+        self.next_id += 1;
+        self.handles.insert(id, handle);
 
-        Err(Error::new(EBADF))
+        Ok(id)
     }
 
     fn read(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        let master_opt = self.ptys.0.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = master_opt {
-            return pipe.read(buf);
+        let handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+        match handle {
+            Handle::Master(master) => master.read(buf),
+            Handle::Slave(slave) => slave.read(buf),
         }
-
-        let slave_opt = self.ptys.1.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = slave_opt {
-            return pipe.read(buf);
-        }
-
-        Err(Error::new(EBADF))
     }
 
     fn write(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
-        let master_opt = self.ptys.0.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = master_opt {
-            return pipe.write(buf);
+        let handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+        match handle {
+            Handle::Master(master) => master.write(buf),
+            Handle::Slave(slave) => slave.write(buf),
         }
-
-        let slave_opt = self.ptys.1.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = slave_opt {
-            return pipe.write(buf);
-        }
-
-        Err(Error::new(EBADF))
     }
 
     fn fcntl(&mut self, id: usize, cmd: usize, arg: usize) -> Result<usize> {
-        if let Some(pipe) = self.ptys.0.get_mut(&id) {
-            return pipe.fcntl(cmd, arg);
+        match self.handles.get_mut(&id) {
+            Some(mut handle) => match *handle {
+                Handle::Master(ref mut master) => master.fcntl(cmd, arg),
+                Handle::Slave(ref mut slave) => slave.fcntl(cmd, arg),
+            },
+            None => Err(Error::new(EBADF))
         }
-
-        if let Some(pipe) = self.ptys.1.get_mut(&id) {
-            return pipe.fcntl(cmd, arg);
-        }
-
-        Err(Error::new(EBADF))
     }
 
     fn fevent(&mut self, id: usize, _flags: usize) -> Result<usize> {
-        if self.ptys.0.contains_key(&id) || self.ptys.1.contains_key(&id) {
-            Ok(id)
-        } else {
-            Err(Error::new(EBADF))
+        let handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+        match handle {
+            Handle::Master(_master) => Ok(id),
+            Handle::Slave(_slave) => Ok(id),
         }
     }
 
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        let master_opt = self.ptys.0.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = master_opt {
-            return pipe.path(buf);
+        let handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+        match handle {
+            Handle::Master(master) => master.path(buf),
+            Handle::Slave(slave) => slave.path(buf),
         }
-
-        let slave_opt = self.ptys.1.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = slave_opt {
-            return pipe.path(buf);
-        }
-
-        Err(Error::new(EBADF))
     }
 
-    fn fstat(&mut self, _id: usize, stat: &mut Stat) -> Result<usize> {
+    fn fstat(&mut self, id: usize, stat: &mut Stat) -> Result<usize> {
+        let _handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+
         *stat = Stat {
             st_mode: MODE_CHR | 0o666,
             ..Default::default()
@@ -150,42 +133,36 @@ impl SchemeMut for PtyScheme {
     }
 
     fn fsync(&mut self, id: usize) -> Result<usize> {
-        let slave_opt = self.ptys.1.get(&id).map(|pipe| pipe.clone());
-        if let Some(pipe) = slave_opt {
-            return pipe.sync();
+        let handle = self.get_handle(id).ok_or(Error::new(EBADF))?;
+        match handle {
+            Handle::Master(_master) => Ok(0),
+            Handle::Slave(slave) => slave.sync(),
         }
-
-        Ok(0)
     }
 
     fn close(&mut self, id: usize) -> Result<usize> {
-        drop(self.ptys.0.remove(&id));
-        drop(self.ptys.1.remove(&id));
+        drop(self.handles.remove(&id));
 
         Ok(0)
     }
 }
 
-/// Read side of a pipe
-#[derive(Clone)]
-pub struct PtyMaster {
+pub struct Pty {
     id: usize,
-    flags: usize,
-    read: Rc<RefCell<VecDeque<Vec<u8>>>>,
-    write: Rc<RefCell<VecDeque<u8>>>,
+    miso: VecDeque<Vec<u8>>,
+    mosi: VecDeque<u8>,
 }
 
-impl PtyMaster {
-    pub fn new(id: usize, flags: usize) -> Self {
-        PtyMaster {
+impl Pty {
+    pub fn new(id: usize) -> Self {
+        Pty {
             id: id,
-            flags: flags,
-            read: Rc::new(RefCell::new(VecDeque::new())),
-            write: Rc::new(RefCell::new(VecDeque::new())),
+            miso: VecDeque::new(),
+            mosi: VecDeque::new()
         }
     }
 
-    fn path(&self, buf: &mut [u8]) -> Result<usize> {
+    pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
         let path_str = format!("pty:{}", self.id);
         let path = path_str.as_bytes();
 
@@ -197,11 +174,31 @@ impl PtyMaster {
 
         Ok(i)
     }
+}
+
+/// Read side of a pipe
+#[derive(Clone)]
+pub struct PtyMaster {
+    pty: Rc<RefCell<Pty>>,
+    flags: usize,
+}
+
+impl PtyMaster {
+    pub fn new(id: usize, flags: usize) -> Self {
+        PtyMaster {
+            pty: Rc::new(RefCell::new(Pty::new(id))),
+            flags: flags,
+        }
+    }
+
+    fn path(&self, buf: &mut [u8]) -> Result<usize> {
+        self.pty.borrow_mut().path(buf)
+    }
 
     fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        let mut read = self.read.borrow_mut();
+        let mut pty = self.pty.borrow_mut();
 
-        if let Some(packet) = read.pop_front() {
+        if let Some(packet) = pty.miso.pop_front() {
             let mut i = 0;
 
             while i < buf.len() && i < packet.len() {
@@ -210,7 +207,7 @@ impl PtyMaster {
             }
 
             Ok(i)
-        } else if self.flags & O_NONBLOCK == O_NONBLOCK || Rc::weak_count(&self.read) == 0 {
+        } else if self.flags & O_NONBLOCK == O_NONBLOCK || Rc::weak_count(&self.pty) == 0 {
             Ok(0)
         } else {
             Err(Error::new(EWOULDBLOCK))
@@ -218,11 +215,11 @@ impl PtyMaster {
     }
 
     fn write(&self, buf: &[u8]) -> Result<usize> {
-        let mut write = self.write.borrow_mut();
+        let mut pty = self.pty.borrow_mut();
 
         let mut i = 0;
         while i < buf.len() {
-            write.push_back(buf[i]);
+            pty.mosi.push_back(buf[i]);
             i += 1;
         }
 
@@ -233,7 +230,7 @@ impl PtyMaster {
         match cmd {
             F_GETFL => Ok(self.flags),
             F_SETFL => {
-                self.flags = arg & ! O_ACCMODE;
+                self.flags = (self.flags & O_ACCMODE) | (arg & ! O_ACCMODE);
                 Ok(0)
             },
             _ => Err(Error::new(EINVAL))
@@ -244,43 +241,34 @@ impl PtyMaster {
 /// Read side of a pipe
 #[derive(Clone)]
 pub struct PtySlave {
-    master_id: usize,
+    pty: Weak<RefCell<Pty>>,
     flags: usize,
-    read: Weak<RefCell<VecDeque<u8>>>,
-    write: Weak<RefCell<VecDeque<Vec<u8>>>>,
 }
 
 impl PtySlave {
     pub fn new(master: &PtyMaster, flags: usize) -> Self {
         PtySlave {
-            master_id: master.id,
+            pty: Rc::downgrade(&master.pty),
             flags: flags,
-            read: Rc::downgrade(&master.write),
-            write: Rc::downgrade(&master.read),
         }
     }
 
     fn path(&self, buf: &mut [u8]) -> Result<usize> {
-        let path_str = format!("pty:{}", self.master_id);
-        let path = path_str.as_bytes();
-
-        let mut i = 0;
-        while i < buf.len() && i < path.len() {
-            buf[i] = path[i];
-            i += 1;
+        if let Some(pty_lock) = self.pty.upgrade() {
+            pty_lock.borrow_mut().path(buf)
+        } else {
+            Err(Error::new(EPIPE))
         }
-
-        Ok(i)
     }
 
     fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        if let Some(read_lock) = self.read.upgrade() {
-            let mut read = read_lock.borrow_mut();
+        if let Some(pty_lock) = self.pty.upgrade() {
+            let mut pty = pty_lock.borrow_mut();
 
             let mut i = 0;
 
-            while i < buf.len() && ! read.is_empty() {
-                buf[i] = read.pop_front().unwrap();
+            while i < buf.len() && ! pty.mosi.is_empty() {
+                buf[i] = pty.mosi.pop_front().unwrap();
                 i += 1;
             }
 
@@ -295,13 +283,13 @@ impl PtySlave {
     }
 
     fn write(&self, buf: &[u8]) -> Result<usize> {
-        if let Some(write_lock) = self.write.upgrade() {
+        if let Some(pty_lock) = self.pty.upgrade() {
             let mut vec = Vec::new();
             vec.push(0);
             vec.extend_from_slice(buf);
 
-            let mut write = write_lock.borrow_mut();
-            write.push_back(vec);
+            let mut pty = pty_lock.borrow_mut();
+            pty.miso.push_back(vec);
 
             Ok(buf.len())
         } else {
@@ -310,12 +298,12 @@ impl PtySlave {
     }
 
     fn sync(&self) -> Result<usize> {
-        if let Some(write_lock) = self.write.upgrade() {
+        if let Some(pty_lock) = self.pty.upgrade() {
             let mut vec = Vec::new();
             vec.push(1);
 
-            let mut write = write_lock.borrow_mut();
-            write.push_back(vec);
+            let mut pty = pty_lock.borrow_mut();
+            pty.miso.push_back(vec);
 
             Ok(0)
         } else {
@@ -327,7 +315,7 @@ impl PtySlave {
         match cmd {
             F_GETFL => Ok(self.flags),
             F_SETFL => {
-                self.flags = arg & ! O_ACCMODE;
+                self.flags = (self.flags & O_ACCMODE) | (arg & ! O_ACCMODE);
                 Ok(0)
             },
             _ => Err(Error::new(EINVAL))
@@ -367,59 +355,62 @@ fn main(){
                 }
             }
 
-            for (id, master) in scheme.ptys.0.iter() {
-                let read = master.read.borrow();
-                if let Some(data) = read.front() {
-                    socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: data.len()
-                    }).expect("pty: failed to write event");
-                } else if Rc::weak_count(&master.read) == 0 {
-                    socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: 0
-                    }).expect("pty: failed to write event");
-                }
-            }
-
-            for (id, slave) in scheme.ptys.1.iter() {
-                if let Some(read_lock) = slave.read.upgrade() {
-                    let read = read_lock.borrow();
-                    if ! read.is_empty() {
-                        socket.write(&Packet {
-                            id: 0,
-                            pid: 0,
-                            uid: 0,
-                            gid: 0,
-                            a: syscall::number::SYS_FEVENT,
-                            b: *id,
-                            c: syscall::flag::EVENT_READ,
-                            d: read.len()
-                        }).expect("pty: failed to write event");
+            for (id, handle) in scheme.handles.iter() {
+                match *handle {
+                    Handle::Master(ref master) => {
+                        let pty = master.pty.borrow();
+                        if let Some(data) = pty.miso.front() {
+                            socket.write(&Packet {
+                                id: 0,
+                                pid: 0,
+                                uid: 0,
+                                gid: 0,
+                                a: syscall::number::SYS_FEVENT,
+                                b: *id,
+                                c: syscall::flag::EVENT_READ,
+                                d: data.len()
+                            }).expect("pty: failed to write event");
+                        } else if Rc::weak_count(&master.pty) == 0 {
+                            socket.write(&Packet {
+                                id: 0,
+                                pid: 0,
+                                uid: 0,
+                                gid: 0,
+                                a: syscall::number::SYS_FEVENT,
+                                b: *id,
+                                c: syscall::flag::EVENT_READ,
+                                d: 0
+                            }).expect("pty: failed to write event");
+                        }
+                    },
+                    Handle::Slave(ref slave) => {
+                        if let Some(pty_lock) = slave.pty.upgrade() {
+                            let pty = pty_lock.borrow();
+                            if ! pty.mosi.is_empty() {
+                                socket.write(&Packet {
+                                    id: 0,
+                                    pid: 0,
+                                    uid: 0,
+                                    gid: 0,
+                                    a: syscall::number::SYS_FEVENT,
+                                    b: *id,
+                                    c: syscall::flag::EVENT_READ,
+                                    d: pty.mosi.len()
+                                }).expect("pty: failed to write event");
+                            }
+                        } else {
+                            socket.write(&Packet {
+                                id: 0,
+                                pid: 0,
+                                uid: 0,
+                                gid: 0,
+                                a: syscall::number::SYS_FEVENT,
+                                b: *id,
+                                c: syscall::flag::EVENT_READ,
+                                d: 0
+                            }).expect("pty: failed to write event");
+                        }
                     }
-                } else {
-                    socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: 0
-                    }).expect("pty: failed to write event");
                 }
             }
         }
