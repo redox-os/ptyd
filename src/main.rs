@@ -52,7 +52,11 @@ impl SchemeMut for PtyScheme {
         }
     }
 
-    fn dup(&mut self, id: usize, _buf: &[u8]) -> Result<usize> {
+    fn dup(&mut self, id: usize, buf: &[u8]) -> Result<usize> {
+        if ! buf.is_empty() {
+            return Err(Error::new(EINVAL));
+        }
+
         /* TODO CLOEXEC - Master cannot be cloned
         let master_opt = self.ptys.0.get(&id).map(|pipe| pipe.clone());
         if let Some(pipe) = master_opt {
