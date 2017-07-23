@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use redox_termios::*;
+use syscall;
 use syscall::error::Result;
 
 pub struct Pty {
@@ -40,7 +41,6 @@ impl Pty {
             cc(VWERASE, 0o027); // CTRL-W
             cc(VKILL, 0o025);   // CTRL-U
             cc(VREPRINT, 0o022);// CTRL-R
-            cc(VSWTC, 0o000);   // NUL
             cc(VINTR, 0o003);   // CTRL-C
             cc(VQUIT, 0o034);   // CTRL-\
             cc(VSUSP, 0o032);   // CTRL-Z
@@ -66,5 +66,118 @@ impl Pty {
         }
 
         Ok(i)
+    }
+
+    pub fn input(&mut self, buf: &[u8]) {
+        //let ifl = &self.termios.c_iflag;
+        //let ofl = &self.termios.c_oflag;
+        //let cfl = &self.termios.c_cflag;
+        let lfl = &self.termios.c_lflag;
+        let cc = &self.termios.c_cc;
+
+        let icanon = lfl & ICANON == ICANON;
+        let isig = lfl & ISIG == ISIG;
+        let iexten = lfl & IEXTEN == IEXTEN;
+        let ixon = lfl & IXON == IXON;
+
+        for &b in buf.iter() {
+            let mut ignore = false;
+            if b == 0 {
+                println!("NUL");
+            } else {
+                if icanon {
+                    if b == cc[VEOF] {
+                        println!("VEOF");
+                        ignore = true;
+                    }
+
+                    if b == cc[VEOL] {
+                        println!("VEOL");
+                    }
+
+                    if b == cc[VEOL2] {
+                        println!("VEOL2");
+                    }
+
+                    if b == cc[VERASE] {
+                        println!("ERASE");
+                        ignore = true;
+                    }
+
+                    if b == cc[VWERASE] && iexten {
+                        println!("VWERASE");
+                        ignore = true;
+                    }
+
+                    if b == cc[VKILL] {
+                        println!("VKILL");
+                        ignore = true;
+                    }
+
+                    if b == cc[VREPRINT] && iexten {
+                        println!("VREPRINT");
+                        ignore = true;
+                    }
+                }
+
+                if isig {
+                    if b == cc[VINTR] {
+                        println!("VINTR");
+
+                        if self.pgrp != 0 {
+                            let _ = syscall::kill(!self.pgrp, syscall::SIGINT);
+                        }
+
+                        ignore = true;
+                    }
+
+                    if b == cc[VQUIT] {
+                        println!("VQUIT");
+
+                        if self.pgrp != 0 {
+                            let _ = syscall::kill(!self.pgrp, syscall::SIGQUIT);
+                        }
+
+                        ignore = true;
+                    }
+
+                    if b == cc[VSUSP] {
+                        println!("VSUSP");
+
+                        if self.pgrp != 0 {
+                            let _ = syscall::kill(!self.pgrp, syscall::SIGTSTP);
+                        }
+
+                        ignore = true;
+                    }
+                }
+
+                if ixon {
+                    if b == cc[VSTART] {
+                        println!("VSTART");
+                        ignore = true;
+                    }
+
+                    if b == cc[VSTOP] {
+                        println!("VSTOP");
+                        ignore = true;
+                    }
+                }
+
+                if b == cc[VLNEXT] && iexten {
+                    println!("VLNEXT");
+                    ignore = true;
+                }
+
+                if b == cc[VDISCARD] && iexten {
+                    println!("VDISCARD");
+                    ignore = true;
+                }
+            }
+
+            if ! ignore {
+                self.mosi.push_back(b);
+            }
+        }
     }
 }

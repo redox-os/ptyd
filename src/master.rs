@@ -31,7 +31,7 @@ impl Resource for PtyMaster {
     fn pty(&self) -> Weak<RefCell<Pty>> {
         Rc::downgrade(&self.pty)
     }
-    
+
     fn flags(&self) -> usize {
         self.flags
     }
@@ -62,13 +62,9 @@ impl Resource for PtyMaster {
     fn write(&self, buf: &[u8]) -> Result<usize> {
         let mut pty = self.pty.borrow_mut();
 
-        let mut i = 0;
-        while i < buf.len() {
-            pty.mosi.push_back(buf[i]);
-            i += 1;
-        }
+        pty.input(buf);
 
-        Ok(i)
+        Ok(buf.len())
     }
 
     fn sync(&self) -> Result<usize> {
