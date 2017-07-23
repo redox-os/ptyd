@@ -125,7 +125,6 @@ impl Pty {
                         println!("VINTR");
 
                         if self.pgrp != 0 {
-                            println!("pgrp {}", self.pgrp);
                             let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGINT);
                         }
 
@@ -136,8 +135,7 @@ impl Pty {
                         println!("VQUIT");
 
                         if self.pgrp != 0 {
-                            println!("pgrp {}", self.pgrp);
-                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
+                            //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
                         }
 
                         ignore = true;
@@ -147,8 +145,7 @@ impl Pty {
                         println!("VSUSP");
 
                         if self.pgrp != 0 {
-                            println!("pgrp {}", self.pgrp);
-                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
+                            //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
                         }
 
                         ignore = true;
