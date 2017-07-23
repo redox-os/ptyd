@@ -1,29 +1,30 @@
 use std::cell::RefCell;
+use std::ops::{Deref, DerefMut};
 use std::rc::Weak;
 
-use syscall::error::{Error, Result, EINVAL, EPIPE, EWOULDBLOCK};
-use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
+use syscall::error::{Error, Result, EBADF, EINVAL, EPIPE};
+use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE};
 
 use pty::Pty;
 use resource::Resource;
 
 /// Read side of a pipe
 #[derive(Clone)]
-pub struct PtySlave {
+pub struct PtyTermios {
     pty: Weak<RefCell<Pty>>,
     flags: usize,
 }
 
-impl PtySlave {
+impl PtyTermios {
     pub fn new(pty: Weak<RefCell<Pty>>, flags: usize) -> Self {
-        PtySlave {
+        PtyTermios {
             pty: pty,
             flags: flags,
         }
     }
 }
 
-impl Resource for PtySlave {
+impl Resource for PtyTermios {
     fn boxed_clone(&self) -> Box<Resource> {
         Box::new(self.clone())
     }
@@ -46,20 +47,15 @@ impl Resource for PtySlave {
 
     fn read(&self, buf: &mut [u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
-            let mut pty = pty_lock.borrow_mut();
+            let pty = pty_lock.borrow();
+            let termios: &[u8] = pty.termios.deref();
 
             let mut i = 0;
-
-            while i < buf.len() && ! pty.mosi.is_empty() {
-                buf[i] = pty.mosi.pop_front().unwrap();
+            while i < buf.len() && i < termios.len() {
+                buf[i] = termios[i];
                 i += 1;
             }
-
-            if i > 0 || self.flags & O_NONBLOCK == O_NONBLOCK {
-                Ok(i)
-            } else {
-                Err(Error::new(EWOULDBLOCK))
-            }
+            Ok(i)
         } else {
             Ok(0)
         }
@@ -67,31 +63,22 @@ impl Resource for PtySlave {
 
     fn write(&self, buf: &[u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
-            let mut vec = Vec::new();
-            vec.push(0);
-            vec.extend_from_slice(buf);
-
             let mut pty = pty_lock.borrow_mut();
-            pty.miso.push_back(vec);
+            let termios: &mut [u8] = pty.termios.deref_mut();
 
-            Ok(buf.len())
+            let mut i = 0;
+            while i < buf.len() && i < termios.len() {
+                termios[i] = buf[i];
+                i += 1;
+            }
+            Ok(i)
         } else {
             Err(Error::new(EPIPE))
         }
     }
 
     fn sync(&self) -> Result<usize> {
-        if let Some(pty_lock) = self.pty.upgrade() {
-            let mut vec = Vec::new();
-            vec.push(1);
-
-            let mut pty = pty_lock.borrow_mut();
-            pty.miso.push_back(vec);
-
-            Ok(0)
-        } else {
-            Err(Error::new(EPIPE))
-        }
+        Ok(0)
     }
 
     fn fcntl(&mut self, cmd: usize, arg: usize) -> Result<usize> {
@@ -106,19 +93,10 @@ impl Resource for PtySlave {
     }
 
     fn fevent(&self) -> Result<()> {
-        Ok(())
+        Err(Error::new(EBADF))
     }
 
     fn fevent_count(&self) -> Option<usize> {
-        if let Some(pty_lock) = self.pty.upgrade() {
-            let pty = pty_lock.borrow();
-            if ! pty.mosi.is_empty() {
-                Some(pty.mosi.len())
-            } else {
-                None
-            }
-        } else {
-            Some(0)
-        }
+        None
     }
 }

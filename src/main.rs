@@ -15,6 +15,7 @@ mod pty;
 mod resource;
 mod scheme;
 mod slave;
+mod termios;
 
 use scheme::PtyScheme;
 

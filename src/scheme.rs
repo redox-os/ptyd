@@ -12,6 +12,7 @@ use master::PtyMaster;
 use pty::Pty;
 use resource::Resource;
 use slave::PtySlave;
+use termios::PtyTermios;
 
 pub struct PtyScheme {
     next_id: usize,
@@ -56,13 +57,16 @@ impl SchemeMut for PtyScheme {
     }
 
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
-        if ! buf.is_empty() {
-            return Err(Error::new(EINVAL));
-        }
-
         let handle = {
             let old_handle = self.handles.get(&old_id).ok_or(Error::new(EBADF))?;
-            old_handle.boxed_clone()
+
+            if buf.is_empty() {
+                old_handle.boxed_clone()
+            } else if buf == b"termios" {
+                Box::new(PtyTermios::new(old_handle.pty(), old_handle.flags()))
+            } else {
+                return Err(Error::new(EINVAL));
+            }
         };
 
         let id = self.next_id;

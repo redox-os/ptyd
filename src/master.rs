@@ -31,6 +31,10 @@ impl Resource for PtyMaster {
     fn pty(&self) -> Weak<RefCell<Pty>> {
         Rc::downgrade(&self.pty)
     }
+    
+    fn flags(&self) -> usize {
+        self.flags
+    }
 
     fn path(&self, buf: &mut [u8]) -> Result<usize> {
         self.pty.borrow_mut().path(buf)

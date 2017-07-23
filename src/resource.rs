@@ -8,6 +8,8 @@ use pty::Pty;
 pub trait Resource {
     fn boxed_clone(&self) -> Box<Resource>;
     fn pty(&self) -> Weak<RefCell<Pty>>;
+    fn flags(&self) -> usize;
+
     fn path(&self, buf: &mut [u8]) -> Result<usize>;
     fn read(&self, buf: &mut [u8]) -> Result<usize>;
     fn write(&self, buf: &[u8]) -> Result<usize>;
