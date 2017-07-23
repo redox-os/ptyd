@@ -9,6 +9,7 @@ use syscall::flag::MODE_CHR;
 use syscall::scheme::SchemeMut;
 
 use master::PtyMaster;
+use pgrp::PtyPgrp;
 use pty::Pty;
 use resource::Resource;
 use slave::PtySlave;
@@ -63,6 +64,8 @@ impl SchemeMut for PtyScheme {
 
             if buf.is_empty() {
                 old_handle.boxed_clone()
+            } else if buf == b"pgrp" {
+                Box::new(PtyPgrp::new(old_handle.pty(), old_handle.flags()))
             } else if buf == b"termios" {
                 Box::new(PtyTermios::new(old_handle.pty(), old_handle.flags()))
             } else if buf == b"winsize" {

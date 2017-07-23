@@ -5,6 +5,7 @@ use syscall::error::Result;
 
 pub struct Pty {
     pub id: usize,
+    pub pgrp: usize,
     pub termios: Termios,
     pub winsize: Winsize,
     pub miso: VecDeque<Vec<u8>>,
@@ -15,6 +16,7 @@ impl Pty {
     pub fn new(id: usize) -> Self {
         let mut pty = Pty {
             id: id,
+            pgrp: 0,
             termios: Termios::default(),
             winsize: Winsize::default(),
             miso: VecDeque::new(),

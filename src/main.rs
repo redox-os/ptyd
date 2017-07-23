@@ -11,6 +11,7 @@ use syscall::error::EWOULDBLOCK;
 use syscall::scheme::SchemeMut;
 
 mod master;
+mod pgrp;
 mod pty;
 mod resource;
 mod scheme;
