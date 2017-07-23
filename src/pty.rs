@@ -101,7 +101,7 @@ impl Pty {
 
                     if b == cc[VERASE] {
                         println!("ERASE");
-                        ignore = true;
+                        //ignore = true;
                     }
 
                     if b == cc[VWERASE] && iexten {
@@ -125,7 +125,8 @@ impl Pty {
                         println!("VINTR");
 
                         if self.pgrp != 0 {
-                            let _ = syscall::kill(!self.pgrp, syscall::SIGINT);
+                            println!("pgrp {}", self.pgrp);
+                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGINT);
                         }
 
                         ignore = true;
@@ -135,7 +136,8 @@ impl Pty {
                         println!("VQUIT");
 
                         if self.pgrp != 0 {
-                            let _ = syscall::kill(!self.pgrp, syscall::SIGQUIT);
+                            println!("pgrp {}", self.pgrp);
+                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
                         }
 
                         ignore = true;
@@ -145,7 +147,8 @@ impl Pty {
                         println!("VSUSP");
 
                         if self.pgrp != 0 {
-                            let _ = syscall::kill(!self.pgrp, syscall::SIGTSTP);
+                            println!("pgrp {}", self.pgrp);
+                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
                         }
 
                         ignore = true;
