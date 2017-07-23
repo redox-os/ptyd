@@ -16,6 +16,7 @@ mod resource;
 mod scheme;
 mod slave;
 mod termios;
+mod winsize;
 
 use scheme::PtyScheme;
 
