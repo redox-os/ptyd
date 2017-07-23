@@ -4,3 +4,4 @@ version = "0.1.0"
 
 [dependencies]
 redox_syscall = "0.1"
+redox_termios = { git = "https://github.com/redox-os/termios.git" }
