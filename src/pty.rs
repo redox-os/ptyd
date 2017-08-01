@@ -50,6 +50,7 @@ impl Pty {
         let icrnl = ifl & ICRNL == ICRNL;
 
         let echo = lfl & ECHO == ECHO;
+        let echonl = lfl & ECHONL == ECHONL;
         let icanon = lfl & ICANON == ICANON;
         let isig = lfl & ISIG == ISIG;
         let iexten = lfl & IEXTEN == IEXTEN;
@@ -166,7 +167,7 @@ impl Pty {
 
             if ! ignore {
                 self.mosi.push_back(b);
-                if echo {
+                if echo || echonl && b == b'\n' {
                     self.output(&[b]);
                 }
             }
@@ -174,9 +175,17 @@ impl Pty {
     }
 
     pub fn output(&mut self, buf: &[u8]) {
-        let mut vec = Vec::new();
+        //TODO: Output flags
+
+        let mut vec = Vec::with_capacity(buf.len() + 1);
         vec.push(0);
-        vec.extend_from_slice(buf);
+
+        for &byte in buf.iter() {
+            let b = byte;
+
+            vec.push(b);
+        }
+
         self.miso.push_back(vec);
     }
 }
