@@ -15,44 +15,14 @@ pub struct Pty {
 
 impl Pty {
     pub fn new(id: usize) -> Self {
-        let mut pty = Pty {
+        Pty {
             id: id,
             pgrp: 0,
             termios: Termios::default(),
             winsize: Winsize::default(),
             miso: VecDeque::new(),
             mosi: VecDeque::new()
-        };
-
-        pty.termios.c_iflag = ICRNL | IXON;
-        pty.termios.c_oflag = OPOST | ONLCR;
-        pty.termios.c_cflag = B38400 | CS8 | CREAD | HUPCL;
-        pty.termios.c_lflag = ISIG | ICANON | ECHO | ECHOE | ECHOK | IEXTEN;
-
-        {
-            let mut cc = |i: usize, b: cc_t| {
-                pty.termios.c_cc[i] = b;
-            };
-
-            cc(VEOF, 0o004);    // CTRL-D
-            cc(VEOL, 0o000);    // NUL
-            cc(VEOL2, 0o000);   // NUL
-            cc(VERASE, 0o177);  // DEL
-            cc(VWERASE, 0o027); // CTRL-W
-            cc(VKILL, 0o025);   // CTRL-U
-            cc(VREPRINT, 0o022);// CTRL-R
-            cc(VINTR, 0o003);   // CTRL-C
-            cc(VQUIT, 0o034);   // CTRL-\
-            cc(VSUSP, 0o032);   // CTRL-Z
-            cc(VSTART, 0o021);  // CTRL-Q
-            cc(VSTOP, 0o023);   // CTRL-S
-            cc(VLNEXT, 0o026);  // CTRL-V
-            cc(VDISCARD, 0o017);// CTRL-U
-            cc(VMIN, 1);
-            cc(VTIME, 0);
         }
-
-        pty
     }
 
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
@@ -69,22 +39,41 @@ impl Pty {
     }
 
     pub fn input(&mut self, buf: &[u8]) {
-        //let ifl = &self.termios.c_iflag;
+        let ifl = self.termios.c_iflag;
         //let ofl = &self.termios.c_oflag;
         //let cfl = &self.termios.c_cflag;
-        let lfl = &self.termios.c_lflag;
-        let cc = &self.termios.c_cc;
+        let lfl = self.termios.c_lflag;
+        let cc = self.termios.c_cc;
 
+        let inlcr = ifl & INLCR == INLCR;
+        let igncr = ifl & IGNCR == IGNCR;
+        let icrnl = ifl & ICRNL == ICRNL;
+
+        let echo = lfl & ECHO == ECHO;
         let icanon = lfl & ICANON == ICANON;
         let isig = lfl & ISIG == ISIG;
         let iexten = lfl & IEXTEN == IEXTEN;
         let ixon = lfl & IXON == IXON;
 
-        for &b in buf.iter() {
+        for &byte in buf.iter() {
+            let mut b = byte;
+
             let mut ignore = false;
             if b == 0 {
                 println!("NUL");
             } else {
+                if b == b'\n' {
+                    if inlcr {
+                        b = b'\r';
+                    }
+                } else if b == b'\r' {
+                    if igncr {
+                        ignore = true;
+                    } else if icrnl {
+                        b = b'\n';
+                    }
+                }
+
                 if icanon {
                     if b == cc[VEOF] {
                         println!("VEOF");
@@ -100,7 +89,7 @@ impl Pty {
                     }
 
                     if b == cc[VERASE] {
-                        println!("ERASE");
+                        //println!("ERASE");
                         //ignore = true;
                     }
 
@@ -177,7 +166,17 @@ impl Pty {
 
             if ! ignore {
                 self.mosi.push_back(b);
+                if echo {
+                    self.output(&[b]);
+                }
             }
         }
+    }
+
+    pub fn output(&mut self, buf: &[u8]) {
+        let mut vec = Vec::new();
+        vec.push(0);
+        vec.extend_from_slice(buf);
+        self.miso.push_back(vec);
     }
 }

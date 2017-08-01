@@ -67,12 +67,8 @@ impl Resource for PtySlave {
 
     fn write(&self, buf: &[u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
-            let mut vec = Vec::new();
-            vec.push(0);
-            vec.extend_from_slice(buf);
-
             let mut pty = pty_lock.borrow_mut();
-            pty.miso.push_back(vec);
+            pty.output(buf);
 
             Ok(buf.len())
         } else {
@@ -82,11 +78,8 @@ impl Resource for PtySlave {
 
     fn sync(&self) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
-            let mut vec = Vec::new();
-            vec.push(1);
-
             let mut pty = pty_lock.borrow_mut();
-            pty.miso.push_back(vec);
+            pty.miso.push_back(vec![1]);
 
             Ok(0)
         } else {
