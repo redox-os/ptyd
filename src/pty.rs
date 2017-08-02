@@ -9,8 +9,9 @@ pub struct Pty {
     pub pgrp: usize,
     pub termios: Termios,
     pub winsize: Winsize,
+    pub cooked: Vec<u8>,
     pub miso: VecDeque<Vec<u8>>,
-    pub mosi: VecDeque<u8>,
+    pub mosi: VecDeque<Vec<u8>>,
 }
 
 impl Pty {
@@ -20,6 +21,7 @@ impl Pty {
             pgrp: 0,
             termios: Termios::default(),
             winsize: Winsize::default(),
+            cooked: Vec::new(),
             miso: VecDeque::new(),
             mosi: VecDeque::new()
         }
@@ -45,6 +47,10 @@ impl Pty {
         let lfl = self.termios.c_lflag;
         let cc = self.termios.c_cc;
 
+        let is_cc = |b: u8, i: usize| -> bool {
+            b != 0 && b == cc[i]
+        };
+
         let inlcr = ifl & INLCR == INLCR;
         let igncr = ifl & IGNCR == IGNCR;
         let icrnl = ifl & ICRNL == ICRNL;
@@ -59,118 +65,143 @@ impl Pty {
         for &byte in buf.iter() {
             let mut b = byte;
 
-            let mut ignore = false;
-            if b == 0 {
-                println!("NUL");
-            } else {
-                if b == b'\n' {
-                    if inlcr {
-                        b = b'\r';
-                    }
-                } else if b == b'\r' {
-                    if igncr {
-                        ignore = true;
-                    } else if icrnl {
-                        b = b'\n';
-                    }
+            // Input tranlation
+            if b == b'\n' {
+                if inlcr {
+                    b = b'\r';
                 }
-
-                if icanon {
-                    if b == cc[VEOF] {
-                        println!("VEOF");
-                        ignore = true;
-                    }
-
-                    if b == cc[VEOL] {
-                        println!("VEOL");
-                    }
-
-                    if b == cc[VEOL2] {
-                        println!("VEOL2");
-                    }
-
-                    if b == cc[VERASE] {
-                        //println!("ERASE");
-                        //ignore = true;
-                    }
-
-                    if b == cc[VWERASE] && iexten {
-                        println!("VWERASE");
-                        ignore = true;
-                    }
-
-                    if b == cc[VKILL] {
-                        println!("VKILL");
-                        ignore = true;
-                    }
-
-                    if b == cc[VREPRINT] && iexten {
-                        println!("VREPRINT");
-                        ignore = true;
-                    }
-                }
-
-                if isig {
-                    if b == cc[VINTR] {
-                        println!("VINTR");
-
-                        if self.pgrp != 0 {
-                            let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGINT);
-                        }
-
-                        ignore = true;
-                    }
-
-                    if b == cc[VQUIT] {
-                        println!("VQUIT");
-
-                        if self.pgrp != 0 {
-                            //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
-                        }
-
-                        ignore = true;
-                    }
-
-                    if b == cc[VSUSP] {
-                        println!("VSUSP");
-
-                        if self.pgrp != 0 {
-                            //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
-                        }
-
-                        ignore = true;
-                    }
-                }
-
-                if ixon {
-                    if b == cc[VSTART] {
-                        println!("VSTART");
-                        ignore = true;
-                    }
-
-                    if b == cc[VSTOP] {
-                        println!("VSTOP");
-                        ignore = true;
-                    }
-                }
-
-                if b == cc[VLNEXT] && iexten {
-                    println!("VLNEXT");
-                    ignore = true;
-                }
-
-                if b == cc[VDISCARD] && iexten {
-                    println!("VDISCARD");
-                    ignore = true;
+            } else if b == b'\r' {
+                if igncr {
+                    b = 0;
+                } else if icrnl {
+                    b = b'\n';
                 }
             }
 
-            if ! ignore {
-                self.mosi.push_back(b);
-                if echo || echonl && b == b'\n' {
+            // Link settings
+            if icanon {
+                if b == b'\n' {
+                    if echonl {
+                        self.output(&[b]);
+                    }
+
+                    self.cooked.push(b);
+                    self.mosi.push_back(self.cooked.clone());
+                    self.cooked.clear();
+
+                    b = 0;
+                }
+
+                if is_cc(b, VEOF) {
+                    self.mosi.push_back(self.cooked.clone());
+                    self.cooked.clear();
+
+                    b = 0;
+                }
+
+                if is_cc(b, VEOL) {
+                    self.cooked.push(b);
+                    self.mosi.push_back(self.cooked.clone());
+                    self.cooked.clear();
+
+                    b = 0;
+                }
+
+                if is_cc(b, VEOL2) {
+                    self.cooked.push(b);
+                    self.mosi.push_back(self.cooked.clone());
+                    self.cooked.clear();
+
+                    b = 0;
+                }
+
+                if is_cc(b, VERASE) {
+                    if let Some(_c) = self.cooked.pop() {
+                        self.output(&[8]);
+                    }
+
+                    b = 0;
+                }
+
+                if is_cc(b, VWERASE) && iexten {
+                    println!("VWERASE");
+                    b = 0;
+                }
+
+                if is_cc(b, VKILL) {
+                    println!("VKILL");
+                    b = 0;
+                }
+
+                if is_cc(b, VREPRINT) && iexten {
+                    println!("VREPRINT");
+                    b = 0;
+                }
+            }
+
+            if isig {
+                if is_cc(b, VINTR) {
+                    if self.pgrp != 0 {
+                        let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGINT);
+                    }
+
+                    b = 0;
+                }
+
+                if is_cc(b, VQUIT) {
+                    println!("VQUIT");
+
+                    if self.pgrp != 0 {
+                        //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
+                    }
+
+                    b = 0;
+                }
+
+                if is_cc(b, VSUSP) {
+                    println!("VSUSP");
+
+                    if self.pgrp != 0 {
+                        //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
+                    }
+
+                    b = 0;
+                }
+            }
+
+            if ixon {
+                if is_cc(b, VSTART) {
+                    println!("VSTART");
+                    b = 0;
+                }
+
+                if is_cc(b, VSTOP) {
+                    println!("VSTOP");
+                    b = 0;
+                }
+            }
+
+            if is_cc(b, VLNEXT) && iexten {
+                println!("VLNEXT");
+                b = 0;
+            }
+
+            if is_cc(b, VDISCARD) && iexten {
+                println!("VDISCARD");
+                b = 0;
+            }
+
+            if b != 0 {
+                if echo {
                     self.output(&[b]);
                 }
+                self.cooked.push(b);
             }
+        }
+
+        if ! icanon && self.cooked.len() >= cc[VMIN] as usize {
+            self.mosi.push_back(self.cooked.clone());
+            self.cooked.clear();
         }
     }
 

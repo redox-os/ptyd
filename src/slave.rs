@@ -48,15 +48,17 @@ impl Resource for PtySlave {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
-            let mut i = 0;
+            if let Some(packet) = pty.mosi.pop_front() {
+                let mut i = 0;
 
-            while i < buf.len() && ! pty.mosi.is_empty() {
-                buf[i] = pty.mosi.pop_front().unwrap();
-                i += 1;
-            }
+                while i < buf.len() && i < packet.len() {
+                    buf[i] = packet[i];
+                    i += 1;
+                }
 
-            if i > 0 || self.flags & O_NONBLOCK == O_NONBLOCK {
                 Ok(i)
+            } else if self.flags & O_NONBLOCK == O_NONBLOCK {
+                Ok(0)
             } else {
                 Err(Error::new(EWOULDBLOCK))
             }
@@ -105,8 +107,8 @@ impl Resource for PtySlave {
     fn fevent_count(&self) -> Option<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
-            if ! pty.mosi.is_empty() {
-                Some(pty.mosi.len())
+            if let Some(data) = pty.mosi.front() {
+                Some(data.len())
             } else {
                 None
             }
