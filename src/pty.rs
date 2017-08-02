@@ -56,6 +56,7 @@ impl Pty {
         let icrnl = ifl & ICRNL == ICRNL;
 
         let echo = lfl & ECHO == ECHO;
+        let echoe = lfl & ECHOE == ECHOE;
         let echonl = lfl & ECHONL == ECHONL;
         let icanon = lfl & ICANON == ICANON;
         let isig = lfl & ISIG == ISIG;
@@ -81,7 +82,7 @@ impl Pty {
             // Link settings
             if icanon {
                 if b == b'\n' {
-                    if echonl {
+                    if echo || echonl {
                         self.output(&[b]);
                     }
 
@@ -100,6 +101,10 @@ impl Pty {
                 }
 
                 if is_cc(b, VEOL) {
+                    if echo {
+                        self.output(&[b]);
+                    }
+
                     self.cooked.push(b);
                     self.mosi.push_back(self.cooked.clone());
                     self.cooked.clear();
@@ -108,6 +113,10 @@ impl Pty {
                 }
 
                 if is_cc(b, VEOL2) {
+                    if echo {
+                        self.output(&[b]);
+                    }
+
                     self.cooked.push(b);
                     self.mosi.push_back(self.cooked.clone());
                     self.cooked.clear();
@@ -117,7 +126,9 @@ impl Pty {
 
                 if is_cc(b, VERASE) {
                     if let Some(_c) = self.cooked.pop() {
-                        self.output(&[8]);
+                        if echoe {
+                            self.output(&[8]);
+                        }
                     }
 
                     b = 0;
