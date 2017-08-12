@@ -93,7 +93,7 @@ impl SchemeMut for PtyScheme {
     }
 
     fn fcntl(&mut self, id: usize, cmd: usize, arg: usize) -> Result<usize> {
-        let mut handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
+        let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.fcntl(cmd, arg)
     }
 
