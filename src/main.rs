@@ -26,6 +26,9 @@ fn main(){
     if unsafe { syscall::clone(0).unwrap() } == 0 {
         let mut socket = File::create(":pty").expect("pty: failed to create pty scheme");
         let mut scheme = PtyScheme::new();
+
+        syscall::setrens(0, 0).expect("ptyd: failed to enter null namespace");
+
         let mut todo = Vec::new();
         loop {
             let mut packet = Packet::default();
