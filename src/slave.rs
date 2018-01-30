@@ -70,6 +70,11 @@ impl Resource for PtySlave {
     fn write(&self, buf: &[u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
+
+            if pty.miso.len() >= 64 {
+                return Err(Error::new(EWOULDBLOCK));
+            }
+
             pty.output(buf);
 
             Ok(buf.len())
@@ -81,6 +86,7 @@ impl Resource for PtySlave {
     fn sync(&self) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
+
             pty.miso.push_back(vec![1]);
 
             Ok(0)

@@ -62,6 +62,10 @@ impl Resource for PtyMaster {
     fn write(&self, buf: &[u8]) -> Result<usize> {
         let mut pty = self.pty.borrow_mut();
 
+        if pty.mosi.len() >= 64 {
+            return Err(Error::new(EWOULDBLOCK));
+        }
+
         pty.input(buf);
 
         Ok(buf.len())
