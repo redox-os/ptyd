@@ -51,6 +51,10 @@ impl Resource for PtyMaster {
                 i += 1;
             }
 
+            if i < packet.len() {
+                pty.miso.push_front(packet[i..].to_vec());
+            }
+
             Ok(i)
         } else if self.flags & O_NONBLOCK == O_NONBLOCK || Rc::weak_count(&self.pty) == 0 {
             Ok(0)

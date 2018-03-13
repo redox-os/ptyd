@@ -56,6 +56,10 @@ impl Resource for PtySlave {
                     i += 1;
                 }
 
+                if i < packet.len() {
+                    pty.mosi.push_front(packet[i..].to_vec());
+                }
+
                 Ok(i)
             } else if self.flags & O_NONBLOCK == O_NONBLOCK {
                 Ok(0)
