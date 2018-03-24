@@ -127,7 +127,7 @@ impl Pty {
                 if is_cc(b, VERASE) {
                     if let Some(_c) = self.cooked.pop() {
                         if echoe {
-                            self.output(&[8]);
+                            self.output(&[8, b' ', 8]);
                         }
                     }
 
