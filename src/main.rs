@@ -7,8 +7,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 use syscall::data::Packet;
-use syscall::error::EWOULDBLOCK;
-use syscall::scheme::SchemeMut;
+use syscall::scheme::SchemeBlockMut;
 
 mod master;
 mod pgrp;
@@ -34,42 +33,44 @@ fn main(){
             let mut packet = Packet::default();
             socket.read(&mut packet).expect("pty: failed to read events from pty scheme");
 
-            let a = packet.a;
-            scheme.handle(&mut packet);
-            if packet.a == (-EWOULDBLOCK) as usize {
+            if let Some(a) = scheme.handle(&mut packet) {
                 packet.a = a;
-                todo.push(packet);
-            } else {
                 socket.write(&packet).expect("pty: failed to write responses to pty scheme");
+            } else {
+                todo.push(packet);
             }
 
             let mut i = 0;
             while i < todo.len() {
-                let a = todo[i].a;
-                scheme.handle(&mut todo[i]);
-                if todo[i].a == (-EWOULDBLOCK) as usize {
-                    todo[i].a = a;
-                    i += 1;
-                } else {
-                    let packet = todo.remove(i);
+                if let Some(a) = scheme.handle(&mut todo[i]) {
+                    let mut packet = todo.remove(i);
+                    packet.a = a;
                     socket.write(&packet).expect("pty: failed to write responses to pty scheme");
+                } else {
+                    i += 1;
                 }
             }
 
-            for (id, handle) in scheme.handles.iter() {
+            for (id, handle) in scheme.handles.iter_mut() {
                 if let Some(count) = handle.fevent_count() {
-                    socket.write(&Packet {
-                        id: 0,
-                        pid: 0,
-                        uid: 0,
-                        gid: 0,
-                        a: syscall::number::SYS_FEVENT,
-                        b: *id,
-                        c: syscall::flag::EVENT_READ,
-                        d: count
-                    }).expect("pty: failed to write event");
+                    post_fevent(&mut socket, *id, syscall::EVENT_READ, count);
+                }
+                if handle.fevent_writable() {
+                    post_fevent(&mut socket, *id, syscall::EVENT_WRITE, 1);
                 }
             }
         }
     }
+}
+fn post_fevent(socket: &mut File, id: usize, flags: usize, count: usize) {
+    socket.write(&Packet {
+        id: 0,
+        pid: 0,
+        uid: 0,
+        gid: 0,
+        a: syscall::number::SYS_FEVENT,
+        b: id,
+        c: flags,
+        d: count
+    }).expect("pty: failed to write event");
 }

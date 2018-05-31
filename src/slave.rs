@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Weak;
 
-use syscall::error::{Error, Result, EINVAL, EPIPE, EWOULDBLOCK};
+use syscall::error::{Error, Result, EINVAL, EPIPE, EAGAIN};
 use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
 
 use pty::Pty;
@@ -12,6 +12,8 @@ use resource::Resource;
 pub struct PtySlave {
     pty: Weak<RefCell<Pty>>,
     flags: usize,
+    notified_read: bool,
+    notified_write: bool
 }
 
 impl PtySlave {
@@ -19,6 +21,8 @@ impl PtySlave {
         PtySlave {
             pty: pty,
             flags: flags,
+            notified_read: false,
+            notified_write: false
         }
     }
 }
@@ -44,7 +48,7 @@ impl Resource for PtySlave {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
@@ -60,28 +64,28 @@ impl Resource for PtySlave {
                     pty.mosi.push_front(packet[i..].to_vec());
                 }
 
-                Ok(i)
+                Ok(Some(i))
             } else if self.flags & O_NONBLOCK == O_NONBLOCK {
-                Ok(0)
+                Err(Error::new(EAGAIN))
             } else {
-                Err(Error::new(EWOULDBLOCK))
+                Ok(None)
             }
         } else {
-            Ok(0)
+            Ok(Some(0))
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<usize> {
+    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
             if pty.miso.len() >= 64 {
-                return Err(Error::new(EWOULDBLOCK));
+                return Ok(None);
             }
 
             pty.output(buf);
 
-            Ok(buf.len())
+            Ok(Some(buf.len()))
         } else {
             Err(Error::new(EPIPE))
         }
@@ -110,20 +114,33 @@ impl Resource for PtySlave {
         }
     }
 
-    fn fevent(&self) -> Result<()> {
+    fn fevent(&mut self) -> Result<()> {
+        self.notified_read = false; // resend
+        self.notified_write = false;
         Ok(())
     }
 
-    fn fevent_count(&self) -> Option<usize> {
+    fn fevent_count(&mut self) -> Option<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
             if let Some(data) = pty.mosi.front() {
-                Some(data.len())
+                if !self.notified_read {
+                    self.notified_read = true;
+                    Some(data.len())
+                } else {
+                    None
+                }
             } else {
+                self.notified_read = false;
                 None
             }
         } else {
             Some(0)
         }
+    }
+    fn fevent_writable(&mut self) -> bool {
+        let notified = self.notified_write;
+        self.notified_write = true;
+        !notified
     }
 }

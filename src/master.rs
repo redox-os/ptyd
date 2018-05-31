@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
-use syscall::error::{Error, Result, EINVAL, EWOULDBLOCK};
+use syscall::error::{Error, Result, EINVAL, EAGAIN};
 use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
 
 use pty::Pty;
@@ -12,6 +12,8 @@ use resource::Resource;
 pub struct PtyMaster {
     pty: Rc<RefCell<Pty>>,
     flags: usize,
+    notified_read: bool,
+    notified_write: bool
 }
 
 impl PtyMaster {
@@ -19,6 +21,8 @@ impl PtyMaster {
         PtyMaster {
             pty: pty,
             flags: flags,
+            notified_read: false,
+            notified_write: false
         }
     }
 }
@@ -40,7 +44,7 @@ impl Resource for PtyMaster {
         self.pty.borrow_mut().path(buf)
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
         let mut pty = self.pty.borrow_mut();
 
         if let Some(packet) = pty.miso.pop_front() {
@@ -55,24 +59,24 @@ impl Resource for PtyMaster {
                 pty.miso.push_front(packet[i..].to_vec());
             }
 
-            Ok(i)
+            Ok(Some(i))
         } else if self.flags & O_NONBLOCK == O_NONBLOCK || Rc::weak_count(&self.pty) == 0 {
-            Ok(0)
+            Err(Error::new(EAGAIN))
         } else {
-            Err(Error::new(EWOULDBLOCK))
+            Ok(None)
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<usize> {
+    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
         let mut pty = self.pty.borrow_mut();
 
         if pty.mosi.len() >= 64 {
-            return Err(Error::new(EWOULDBLOCK));
+            return Ok(None);
         }
 
         pty.input(buf);
 
-        Ok(buf.len())
+        Ok(Some(buf.len()))
     }
 
     fn sync(&self) -> Result<usize> {
@@ -90,22 +94,29 @@ impl Resource for PtyMaster {
         }
     }
 
-    fn fevent(&self) -> Result<()> {
+    fn fevent(&mut self) -> Result<()> {
+        self.notified_read = false; // resend
+        self.notified_write = false;
         Ok(())
     }
 
-    fn fevent_count(&self) -> Option<usize> {
-        {
-            let pty = self.pty.borrow();
-            if let Some(data) = pty.miso.front() {
-                return Some(data.len());
+    fn fevent_count(&mut self) -> Option<usize> {
+        let pty = self.pty.borrow();
+        if let Some(data) = pty.miso.front() {
+            if !self.notified_read {
+                self.notified_read = true;
+                Some(data.len())
+            } else {
+                None
             }
-        }
-
-        if Rc::weak_count(&self.pty) == 0 {
-            Some(0)
         } else {
+            self.notified_read = false;
             None
         }
+    }
+    fn fevent_writable(&mut self) -> bool {
+        let notified = self.notified_write;
+        self.notified_write = true;
+        !notified
     }
 }

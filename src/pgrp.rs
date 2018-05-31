@@ -45,7 +45,7 @@ impl Resource for PtyPgrp {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
             let pgrp: &[u8] = unsafe {
@@ -60,13 +60,13 @@ impl Resource for PtyPgrp {
                 buf[i] = pgrp[i];
                 i += 1;
             }
-            Ok(i)
+            Ok(Some(i))
         } else {
-            Ok(0)
+            Ok(Some(0))
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<usize> {
+    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
             let pgrp: &mut [u8] = unsafe {
@@ -81,7 +81,7 @@ impl Resource for PtyPgrp {
                 pgrp[i] = buf[i];
                 i += 1;
             }
-            Ok(i)
+            Ok(Some(i))
         } else {
             Err(Error::new(EPIPE))
         }
@@ -102,11 +102,14 @@ impl Resource for PtyPgrp {
         }
     }
 
-    fn fevent(&self) -> Result<()> {
+    fn fevent(&mut self) -> Result<()> {
         Err(Error::new(EBADF))
     }
 
-    fn fevent_count(&self) -> Option<usize> {
+    fn fevent_count(&mut self) -> Option<usize> {
         None
+    }
+    fn fevent_writable(&mut self) -> bool {
+        false
     }
 }
