@@ -45,7 +45,7 @@ impl Resource for PtyWinsize {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
             let winsize: &[u8] = pty.winsize.deref();
@@ -55,13 +55,13 @@ impl Resource for PtyWinsize {
                 buf[i] = winsize[i];
                 i += 1;
             }
-            Ok(i)
+            Ok(Some(i))
         } else {
-            Ok(0)
+            Ok(Some(0))
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<usize> {
+    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
             let winsize: &mut [u8] = pty.winsize.deref_mut();
@@ -71,7 +71,7 @@ impl Resource for PtyWinsize {
                 winsize[i] = buf[i];
                 i += 1;
             }
-            Ok(i)
+            Ok(Some(i))
         } else {
             Err(Error::new(EPIPE))
         }
@@ -92,11 +92,14 @@ impl Resource for PtyWinsize {
         }
     }
 
-    fn fevent(&self) -> Result<()> {
+    fn fevent(&mut self) -> Result<()> {
         Err(Error::new(EBADF))
     }
 
-    fn fevent_count(&self) -> Option<usize> {
+    fn fevent_count(&mut self) -> Option<usize> {
         None
+    }
+    fn fevent_writable(&mut self) -> bool {
+        false
     }
 }

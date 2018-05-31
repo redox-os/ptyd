@@ -3,5 +3,5 @@ name = "ptyd"
 version = "0.1.0"
 
 [dependencies]
-redox_syscall = "0.1"
+redox_syscall = "0.1.40"
 redox_termios = "0.1"

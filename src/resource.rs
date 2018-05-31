@@ -11,10 +11,11 @@ pub trait Resource {
     fn flags(&self) -> usize;
 
     fn path(&self, buf: &mut [u8]) -> Result<usize>;
-    fn read(&self, buf: &mut [u8]) -> Result<usize>;
-    fn write(&self, buf: &[u8]) -> Result<usize>;
+    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>>;
+    fn write(&self, buf: &[u8]) -> Result<Option<usize>>;
     fn sync(&self) -> Result<usize>;
     fn fcntl(&mut self, cmd: usize, arg: usize) -> Result<usize>;
-    fn fevent(&self) -> Result<()>;
-    fn fevent_count(&self) -> Option<usize>;
+    fn fevent(&mut self) -> Result<()>;
+    fn fevent_count(&mut self) -> Option<usize>;
+    fn fevent_writable(&mut self) -> bool;
 }
