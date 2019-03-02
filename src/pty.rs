@@ -160,20 +160,16 @@ impl Pty {
                 }
 
                 if is_cc(b, VQUIT) {
-                    println!("VQUIT");
-
                     if self.pgrp != 0 {
-                        //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
+                        let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGQUIT);
                     }
 
                     b = 0;
                 }
 
                 if is_cc(b, VSUSP) {
-                    println!("VSUSP");
-
                     if self.pgrp != 0 {
-                        //let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
+                        let _ = syscall::kill(-(self.pgrp as isize) as usize, syscall::SIGTSTP);
                     }
 
                     b = 0;
@@ -222,9 +218,7 @@ impl Pty {
         let mut vec = Vec::with_capacity(buf.len() + 1);
         vec.push(0);
 
-        for &byte in buf.iter() {
-            let b = byte;
-
+        for &b in buf.iter() {
             vec.push(b);
         }
 
