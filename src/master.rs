@@ -56,7 +56,11 @@ impl Resource for PtyMaster {
             }
 
             if i < packet.len() {
-                pty.miso.push_front(packet[i..].to_vec());
+                let packet_remaining = &packet[i..];
+                let mut new_packet = Vec::with_capacity(packet_remaining.len() + 1);
+                new_packet.push(packet[0]);
+                new_packet.extend(packet_remaining);
+                pty.miso.push_front(new_packet);
             }
 
             Ok(Some(i))
