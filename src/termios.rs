@@ -92,14 +92,11 @@ impl Resource for PtyTermios {
         }
     }
 
-    fn fevent(&mut self) -> Result<()> {
+    fn fevent(&mut self) -> Result<usize> {
         Err(Error::new(EBADF))
     }
 
-    fn fevent_count(&mut self) -> Option<usize> {
-        None
-    }
-    fn fevent_writable(&mut self) -> bool {
-        false
+    fn events(&mut self) -> usize {
+        0
     }
 }

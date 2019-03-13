@@ -15,7 +15,6 @@ pub trait Resource {
     fn write(&self, buf: &[u8]) -> Result<Option<usize>>;
     fn sync(&self) -> Result<usize>;
     fn fcntl(&mut self, cmd: usize, arg: usize) -> Result<usize>;
-    fn fevent(&mut self) -> Result<()>;
-    fn fevent_count(&mut self) -> Option<usize>;
-    fn fevent_writable(&mut self) -> bool;
+    fn fevent(&mut self) -> Result<usize>;
+    fn events(&mut self) -> usize;
 }

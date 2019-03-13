@@ -114,33 +114,32 @@ impl Resource for PtySlave {
         }
     }
 
-    fn fevent(&mut self) -> Result<()> {
+    fn fevent(&mut self) -> Result<usize> {
         self.notified_read = false; // resend
         self.notified_write = false;
-        Ok(())
+        Ok(self.events())
     }
 
-    fn fevent_count(&mut self) -> Option<usize> {
+    fn events(&mut self) -> usize {
+        let mut events = 0;
+
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
-            if let Some(data) = pty.mosi.front() {
+            if pty.mosi.front().is_some() {
                 if !self.notified_read {
                     self.notified_read = true;
-                    Some(data.len())
-                } else {
-                    None
+                    events |= syscall::EVENT_READ;
                 }
             } else {
                 self.notified_read = false;
-                None
             }
-        } else {
-            Some(0)
         }
-    }
-    fn fevent_writable(&mut self) -> bool {
-        let notified = self.notified_write;
-        self.notified_write = true;
-        !notified
+
+        if ! self.notified_write {
+            self.notified_write = true;
+            events |= syscall::EVENT_WRITE;
+        }
+
+        events
     }
 }

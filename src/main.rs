@@ -52,11 +52,9 @@ fn main(){
             }
 
             for (id, handle) in scheme.handles.iter_mut() {
-                if let Some(count) = handle.fevent_count() {
-                    post_fevent(&mut socket, *id, syscall::EVENT_READ, count);
-                }
-                if handle.fevent_writable() {
-                    post_fevent(&mut socket, *id, syscall::EVENT_WRITE, 1);
+                let events = handle.events();
+                if events > 0 {
+                    post_fevent(&mut socket, *id, events, 1);
                 }
             }
         }

@@ -99,7 +99,7 @@ impl SchemeBlockMut for PtyScheme {
 
     fn fevent(&mut self, id: usize, _flags: usize) -> Result<Option<usize>> {
         let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
-        handle.fevent().and(Ok(Some(id)))
+        handle.fevent().map(Some)
     }
 
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<Option<usize>> {
