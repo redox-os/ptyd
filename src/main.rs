@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 extern crate redox_termios;
 extern crate syscall;
 
