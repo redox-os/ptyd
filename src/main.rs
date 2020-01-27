@@ -58,6 +58,7 @@ fn main(){
         }
     }
 }
+
 fn post_fevent(socket: &mut File, id: usize, flags: usize, count: usize) {
     socket.write(&Packet {
         id: 0,

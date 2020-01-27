@@ -213,12 +213,20 @@ impl Pty {
     }
 
     pub fn output(&mut self, buf: &[u8]) {
-        //TODO: Output flags
+        //TODO: more output flags
+
+        let ofl = &self.termios.c_oflag;
+
+        let opost = ofl & OPOST == OPOST;
+        let onlcr = ofl & ONLCR == ONLCR;
 
         let mut vec = Vec::with_capacity(buf.len() + 1);
         vec.push(0);
 
         for &b in buf.iter() {
+            if opost && onlcr && b == b'\n' {
+                vec.push(b'\r');
+            }
             vec.push(b);
         }
 
