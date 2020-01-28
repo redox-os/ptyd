@@ -52,6 +52,8 @@ impl Resource for PtySlave {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
+            pty.update();
+
             if let Some(packet) = pty.mosi.pop_front() {
                 let mut i = 0;
 

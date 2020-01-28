@@ -1,10 +1,12 @@
 extern crate redox_termios;
 extern crate syscall;
 
-use std::fs::File;
-use std::io::{Read, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::AsRawFd;
 
-use syscall::data::Packet;
+use syscall::data::{Event, Packet, TimeSpec};
 use syscall::scheme::SchemeBlockMut;
 
 mod master;
@@ -21,21 +23,77 @@ use scheme::PtyScheme;
 fn main(){
     // Daemonize
     if unsafe { syscall::clone(0).unwrap() } == 0 {
-        let mut socket = File::create(":pty").expect("pty: failed to create pty scheme");
-        let mut scheme = PtyScheme::new();
+        let mut event_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("event:")
+            .expect("pty: failed to open event:");
+
+        let time_path = format!("time:{}", syscall::CLOCK_MONOTONIC);
+        let mut time_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(syscall::O_NONBLOCK as i32)
+            .open(time_path)
+            .expect("pty: failed to open time:");
+
+        let mut socket = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .custom_flags(syscall::O_NONBLOCK as i32)
+            .open(":pty")
+            .expect("pty: failed to create pty scheme");
 
         syscall::setrens(0, 0).expect("ptyd: failed to enter null namespace");
 
-        let mut todo = Vec::new();
-        loop {
-            let mut packet = Packet::default();
-            socket.read(&mut packet).expect("pty: failed to read events from pty scheme");
+        event_file.write(&Event {
+            id: socket.as_raw_fd() as usize,
+            flags: syscall::EVENT_READ,
+            data: 1,
+        }).expect("pty: failed to watch events on pty:");
 
-            if let Some(a) = scheme.handle(&mut packet) {
-                packet.a = a;
-                socket.write(&packet).expect("pty: failed to write responses to pty scheme");
-            } else {
-                todo.push(packet);
+        event_file.write(&Event {
+            id: time_file.as_raw_fd() as usize,
+            flags: syscall::EVENT_READ,
+            data: 2,
+        }).expect("pty: failed to watch events on time:");
+
+        //TODO: do not set timeout if not necessary
+        timeout(&mut time_file)
+            .expect("pty: failed to set timeout");
+
+        let mut scheme = PtyScheme::new();
+        let mut todo = Vec::new();
+        let mut timeout_count = 0u64;
+        loop {
+            let mut event = Event::default();
+            event_file.read(&mut event)
+                .expect("pty: failed to read event:");
+
+            match event.data {
+                1 => {
+                    let mut packet = Packet::default();
+                    socket.read(&mut packet).expect("pty: failed to read events from pty scheme");
+
+                    if let Some(a) = scheme.handle(&mut packet) {
+                        packet.a = a;
+                        socket.write(&packet).expect("pty: failed to write responses to pty scheme");
+                    } else {
+                        todo.push(packet);
+                    }
+                },
+                2 => {
+                    timeout(&mut time_file)
+                        .expect("pty: failed to set timeout");
+
+                    timeout_count.wrapping_add(1);
+
+                    for (_id, handle) in scheme.handles.iter_mut() {
+                        handle.timeout(timeout_count);
+                    }
+                }
+                _ => (),
             }
 
             let mut i = 0;
@@ -57,6 +115,19 @@ fn main(){
             }
         }
     }
+}
+
+fn timeout(time_file: &mut File) -> io::Result<()> {
+    let mut time = TimeSpec::default();
+    time_file.read_exact(&mut time)?;
+
+    time.tv_nsec += 100_000_000;
+    while time.tv_nsec >= 1_000_000_000 {
+        time.tv_sec += 1;
+        time.tv_nsec -= 1_000_000_000;
+    }
+
+    time_file.write_all(&time)
 }
 
 fn post_fevent(socket: &mut File, id: usize, flags: usize, count: usize) {

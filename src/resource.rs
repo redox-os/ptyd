@@ -17,4 +17,7 @@ pub trait Resource {
     fn fcntl(&mut self, cmd: usize, arg: usize) -> Result<usize>;
     fn fevent(&mut self) -> Result<usize>;
     fn events(&mut self) -> usize;
+    fn timeout(&self, _count: u64) {
+        // Handled only by PTY master
+    }
 }

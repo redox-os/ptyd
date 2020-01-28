@@ -12,6 +12,8 @@ pub struct Pty {
     pub cooked: Vec<u8>,
     pub miso: VecDeque<Vec<u8>>,
     pub mosi: VecDeque<Vec<u8>>,
+    pub timeout_count: u64,
+    pub timeout_character: Option<u64>,
 }
 
 impl Pty {
@@ -23,7 +25,9 @@ impl Pty {
             winsize: Winsize::default(),
             cooked: Vec::new(),
             miso: VecDeque::new(),
-            mosi: VecDeque::new()
+            mosi: VecDeque::new(),
+            timeout_count: 0,
+            timeout_character: None,
         }
     }
 
@@ -202,14 +206,15 @@ impl Pty {
                 if echo {
                     self.output(&[b]);
                 }
+
+                // Restart timer after every byte
+                self.timeout_character = Some(self.timeout_count);
+
                 self.cooked.push(b);
             }
         }
 
-        if ! icanon && self.cooked.len() >= cc[VMIN] as usize {
-            self.mosi.push_back(self.cooked.clone());
-            self.cooked.clear();
-        }
+        self.update();
     }
 
     pub fn output(&mut self, buf: &[u8]) {
@@ -231,5 +236,80 @@ impl Pty {
         }
 
         self.miso.push_back(vec);
+    }
+
+    pub fn update(&mut self) {
+        let lfl = self.termios.c_lflag;
+        let cc = self.termios.c_cc;
+        let icanon = lfl & ICANON == ICANON;
+        let vmin = cc[VMIN] as usize;
+        let vtime = cc[VTIME] as u64;
+
+        // http://unixwiz.net/techtips/termios-vmin-vtime.html
+        if ! icanon {
+            if vtime == 0 {
+                // No timeout specified
+                if vmin == 0 {
+                    // Polling read, return immediately with data
+                    if self.mosi.is_empty() {
+                        self.mosi.push_back(self.cooked.clone());
+                        self.cooked.clear();
+                    }
+                } else {
+                    // Blocking read, wait until vmin bytes are available
+                    if self.cooked.len() >= vmin {
+                        self.mosi.push_back(self.cooked.clone());
+                        self.cooked.clear();
+                    }
+                }
+            } else {
+                // Timeout specified using vtime
+                if vmin == 0 {
+                    // Return when any data is available or the timer expires
+                    if ! self.cooked.is_empty() {
+                        self.mosi.push_back(self.cooked.clone());
+                        self.cooked.clear();
+                    } else {
+                        if let Some(timeout_character) = self.timeout_character {
+                            if self.timeout_count >= timeout_character.wrapping_add(vtime) {
+                                self.timeout_character = None;
+
+                                if self.mosi.is_empty() {
+                                    self.mosi.push_back(self.cooked.clone());
+                                    self.cooked.clear();
+                                }
+                            }
+                        } else {
+                            // Start timer if not already started
+                            self.timeout_character = Some(self.timeout_count);
+                        }
+                    }
+                } else {
+                    // Return when min bytes are received or the timer expires
+                    // when any data is available
+                    if self.cooked.len() >= vmin {
+                        self.mosi.push_back(self.cooked.clone());
+                        self.cooked.clear();
+                    } else if ! self.cooked.is_empty() {
+                        if let Some(timeout_character) = self.timeout_character {
+                            if self.timeout_count >= timeout_character.wrapping_add(vtime) {
+                                self.timeout_character = None;
+
+                                self.mosi.push_back(self.cooked.clone());
+                                self.cooked.clear();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn timeout(&mut self, count: u64) {
+        if self.timeout_count != count {
+            self.timeout_count = count;
+
+            self.update();
+        }
     }
 }

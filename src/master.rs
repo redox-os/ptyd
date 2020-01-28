@@ -124,4 +124,9 @@ impl Resource for PtyMaster {
 
         events
     }
+
+    fn timeout(&self, count: u64) {
+        let mut pty = self.pty.borrow_mut();
+        pty.timeout(count);
+    }
 }
