@@ -28,7 +28,7 @@ impl PtySlave {
 }
 
 impl Resource for PtySlave {
-    fn boxed_clone(&self) -> Box<Resource> {
+    fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
 

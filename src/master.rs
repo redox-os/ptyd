@@ -28,7 +28,7 @@ impl PtyMaster {
 }
 
 impl Resource for PtyMaster {
-    fn boxed_clone(&self) -> Box<Resource> {
+    fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
 

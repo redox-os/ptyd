@@ -25,7 +25,7 @@ impl PtyWinsize {
 }
 
 impl Resource for PtyWinsize {
-    fn boxed_clone(&self) -> Box<Resource> {
+    fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
 

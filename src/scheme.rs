@@ -18,7 +18,7 @@ use winsize::PtyWinsize;
 
 pub struct PtyScheme {
     next_id: usize,
-    pub handles: BTreeMap<usize, Box<Resource>>,
+    pub handles: BTreeMap<usize, Box<dyn Resource>>,
 }
 
 impl PtyScheme {
@@ -59,7 +59,7 @@ impl SchemeBlockMut for PtyScheme {
     }
 
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<Option<usize>> {
-        let handle: Box<Resource> = {
+        let handle: Box<dyn Resource> = {
             let old_handle = self.handles.get(&old_id).ok_or(Error::new(EBADF))?;
 
             if buf.is_empty() {

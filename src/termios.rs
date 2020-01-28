@@ -25,7 +25,7 @@ impl PtyTermios {
 }
 
 impl Resource for PtyTermios {
-    fn boxed_clone(&self) -> Box<Resource> {
+    fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
 
