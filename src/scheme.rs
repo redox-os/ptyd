@@ -5,7 +5,7 @@ use std::str;
 
 use syscall::data::Stat;
 use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT};
-use syscall::flag::MODE_CHR;
+use syscall::flag::{EventFlags, MODE_CHR};
 use syscall::scheme::SchemeBlockMut;
 
 use master::PtyMaster;
@@ -97,7 +97,7 @@ impl SchemeBlockMut for PtyScheme {
         handle.fcntl(cmd, arg).map(Some)
     }
 
-    fn fevent(&mut self, id: usize, _flags: usize) -> Result<Option<usize>> {
+    fn fevent(&mut self, id: usize, _flags: EventFlags) -> Result<Option<EventFlags>> {
         let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.fevent().map(Some)
     }

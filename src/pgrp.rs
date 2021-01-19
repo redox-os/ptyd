@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::rc::Weak;
 
 use syscall::error::{Error, Result, EBADF, EINVAL, EPIPE};
-use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE};
+use syscall::flag::{EventFlags, F_GETFL, F_SETFL, O_ACCMODE};
 
 use pty::Pty;
 use resource::Resource;
@@ -102,11 +102,11 @@ impl Resource for PtyPgrp {
         }
     }
 
-    fn fevent(&mut self) -> Result<usize> {
+    fn fevent(&mut self) -> Result<EventFlags> {
         Err(Error::new(EBADF))
     }
 
-    fn events(&mut self) -> usize {
-        0
+    fn events(&mut self) -> EventFlags {
+        EventFlags::empty()
     }
 }

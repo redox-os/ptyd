@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Weak;
 
 use syscall::error::{Error, Result, EINVAL, EPIPE, EAGAIN};
-use syscall::flag::{F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
+use syscall::flag::{EventFlags, F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
 
 use pty::Pty;
 use resource::Resource;
@@ -116,14 +116,14 @@ impl Resource for PtySlave {
         }
     }
 
-    fn fevent(&mut self) -> Result<usize> {
+    fn fevent(&mut self) -> Result<EventFlags> {
         self.notified_read = false; // resend
         self.notified_write = false;
         Ok(self.events())
     }
 
-    fn events(&mut self) -> usize {
-        let mut events = 0;
+    fn events(&mut self) -> EventFlags {
+        let mut events = EventFlags::empty();
 
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();

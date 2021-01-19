@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Weak;
 
 use syscall::error::Result;
+use syscall::flag::EventFlags;
 
 use pty::Pty;
 
@@ -15,8 +16,8 @@ pub trait Resource {
     fn write(&self, buf: &[u8]) -> Result<Option<usize>>;
     fn sync(&self) -> Result<usize>;
     fn fcntl(&mut self, cmd: usize, arg: usize) -> Result<usize>;
-    fn fevent(&mut self) -> Result<usize>;
-    fn events(&mut self) -> usize;
+    fn fevent(&mut self) -> Result<EventFlags>;
+    fn events(&mut self) -> EventFlags;
     fn timeout(&self, _count: u64) {
         // Handled only by PTY master
     }

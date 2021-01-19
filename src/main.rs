@@ -7,6 +7,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 
 use syscall::data::{Event, Packet, TimeSpec};
+use syscall::flag::{CloneFlags, EventFlags};
 use syscall::scheme::SchemeBlockMut;
 
 mod master;
@@ -22,7 +23,7 @@ use scheme::PtyScheme;
 
 fn main(){
     // Daemonize
-    if unsafe { syscall::clone(0).unwrap() } == 0 {
+    if unsafe { syscall::clone(CloneFlags::empty()).unwrap() } == 0 {
         let mut event_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -109,7 +110,7 @@ fn main(){
 
             for (id, handle) in scheme.handles.iter_mut() {
                 let events = handle.events();
-                if events > 0 {
+                if events != EventFlags::empty() {
                     post_fevent(&mut socket, *id, events, 1);
                 }
             }
@@ -130,7 +131,7 @@ fn timeout(time_file: &mut File) -> io::Result<()> {
     time_file.write_all(&time)
 }
 
-fn post_fevent(socket: &mut File, id: usize, flags: usize, count: usize) {
+fn post_fevent(socket: &mut File, id: usize, flags: EventFlags, count: usize) {
     socket.write(&Packet {
         id: 0,
         pid: 0,
@@ -138,7 +139,7 @@ fn post_fevent(socket: &mut File, id: usize, flags: usize, count: usize) {
         gid: 0,
         a: syscall::number::SYS_FEVENT,
         b: id,
-        c: flags,
+        c: flags.bits(),
         d: count
     }).expect("pty: failed to write event");
 }
