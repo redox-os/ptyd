@@ -31,8 +31,8 @@ impl PtyScheme {
 }
 
 impl SchemeBlockMut for PtyScheme {
-    fn open(&mut self, path: &[u8], flags: usize, _uid: u32, _gid: u32) -> Result<Option<usize>> {
-        let path = str::from_utf8(path).or(Err(Error::new(EINVAL)))?.trim_matches('/');
+    fn open(&mut self, path: &str, flags: usize, _uid: u32, _gid: u32) -> Result<Option<usize>> {
+        let path = path.trim_matches('/');
 
         if path.is_empty() {
             let id = self.next_id;
