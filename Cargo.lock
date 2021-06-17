@@ -9,13 +9,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "ptyd"
 version = "0.1.0"
 dependencies = [
- "redox_syscall 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "redox_syscall 0.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "redox_termios 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -26,10 +26,10 @@ name = "redox_termios"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "redox_syscall 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "redox_syscall 0.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [metadata]
 "checksum bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
-"checksum redox_syscall 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)" = "85dd92e586f7355c633911e11f77f3d12f04b1b1bd76a198bd34ae3af8341ef2"
+"checksum redox_syscall 0.2.9 (registry+https://github.com/rust-lang/crates.io-index)" = "5ab49abadf3f9e1c4bc499e8845e152ad87d2ad2d30371841171169e9d75feee"
 "checksum redox_termios 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8440d8acb4fd3d277125b4bd01a6f38aee8d814b3b5fc09b3f2b825d37d3fe8f"
