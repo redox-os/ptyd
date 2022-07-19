@@ -22,8 +22,7 @@ mod winsize;
 use scheme::PtyScheme;
 
 fn main(){
-    // Daemonize
-    if unsafe { syscall::clone(CloneFlags::empty()).unwrap() } == 0 {
+    redox_daemon::Daemon::new(move |daemon| {
         let mut event_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -47,6 +46,8 @@ fn main(){
             .expect("pty: failed to create pty scheme");
 
         syscall::setrens(0, 0).expect("ptyd: failed to enter null namespace");
+
+        daemon.ready().expect("pty: failed to notify parent");
 
         event_file.write(&Event {
             id: socket.as_raw_fd() as usize,
@@ -115,7 +116,7 @@ fn main(){
                 }
             }
         }
-    }
+    }).expect("pty: failed to daemonize");
 }
 
 fn timeout(time_file: &mut File) -> io::Result<()> {

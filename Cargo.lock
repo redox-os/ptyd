@@ -9,11 +9,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "libc"
+version = "0.2.126"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
+
+[[package]]
 name = "ptyd"
 version = "0.1.0"
 dependencies = [
+ "redox-daemon",
  "redox_syscall",
  "redox_termios",
+]
+
+[[package]]
+name = "redox-daemon"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21e31c834277709c7ff3eb74959fe62be4b45b1189ba9d41fd3744cd3a9c554f"
+dependencies = [
+ "libc",
+ "redox_syscall",
 ]
 
 [[package]]
