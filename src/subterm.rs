@@ -1,33 +1,33 @@
 use std::cell::RefCell;
 use std::rc::Weak;
 
-use syscall::error::{Error, Result, EINVAL, EPIPE, EAGAIN};
+use syscall::error::{Error, Result, EAGAIN, EINVAL, EPIPE};
 use syscall::flag::{EventFlags, F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
 
-use pty::Pty;
-use resource::Resource;
+use crate::pty::Pty;
+use crate::resource::Resource;
 
 /// Read side of a pipe
 #[derive(Clone)]
-pub struct PtySlave {
+pub struct PtySubTerm {
     pty: Weak<RefCell<Pty>>,
     flags: usize,
     notified_read: bool,
-    notified_write: bool
+    notified_write: bool,
 }
 
-impl PtySlave {
+impl PtySubTerm {
     pub fn new(pty: Weak<RefCell<Pty>>, flags: usize) -> Self {
-        PtySlave {
+        PtySubTerm {
             pty: pty,
             flags: flags,
             notified_read: false,
-            notified_write: false
+            notified_write: false,
         }
     }
 }
 
-impl Resource for PtySlave {
+impl Resource for PtySubTerm {
     fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
@@ -40,7 +40,7 @@ impl Resource for PtySlave {
         self.flags
     }
 
-    fn path(&self, buf: &mut [u8]) -> Result<usize> {
+    fn path(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             pty_lock.borrow_mut().path(buf)
         } else {
@@ -48,7 +48,10 @@ impl Resource for PtySlave {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>> {
+        
+        self.notified_read = false;
+
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
@@ -77,7 +80,7 @@ impl Resource for PtySlave {
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
+    fn write(&mut self, buf: &[u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
@@ -93,7 +96,7 @@ impl Resource for PtySlave {
         }
     }
 
-    fn sync(&self) -> Result<usize> {
+    fn sync(&mut self) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
 
@@ -109,10 +112,10 @@ impl Resource for PtySlave {
         match cmd {
             F_GETFL => Ok(self.flags),
             F_SETFL => {
-                self.flags = (self.flags & O_ACCMODE) | (arg & ! O_ACCMODE);
+                self.flags = (self.flags & O_ACCMODE) | (arg & !O_ACCMODE);
                 Ok(0)
-            },
-            _ => Err(Error::new(EINVAL))
+            }
+            _ => Err(Error::new(EINVAL)),
         }
     }
 
@@ -137,7 +140,7 @@ impl Resource for PtySlave {
             }
         }
 
-        if ! self.notified_write {
+        if !self.notified_write {
             self.notified_write = true;
             events |= syscall::EVENT_WRITE;
         }

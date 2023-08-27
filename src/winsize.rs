@@ -5,8 +5,8 @@ use std::rc::Weak;
 use syscall::error::{Error, Result, EBADF, EINVAL, EPIPE};
 use syscall::flag::{EventFlags, F_GETFL, F_SETFL, O_ACCMODE};
 
-use pty::Pty;
-use resource::Resource;
+use crate::pty::Pty;
+use crate::resource::Resource;
 
 /// Read side of a pipe
 #[derive(Clone)]
@@ -37,7 +37,7 @@ impl Resource for PtyWinsize {
         self.flags
     }
 
-    fn path(&self, buf: &mut [u8]) -> Result<usize> {
+    fn path(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Some(pty_lock) = self.pty.upgrade() {
             pty_lock.borrow_mut().path(buf)
         } else {
@@ -45,7 +45,7 @@ impl Resource for PtyWinsize {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let pty = pty_lock.borrow();
             let winsize: &[u8] = pty.winsize.deref();
@@ -61,7 +61,7 @@ impl Resource for PtyWinsize {
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
+    fn write(&mut self, buf: &[u8]) -> Result<Option<usize>> {
         if let Some(pty_lock) = self.pty.upgrade() {
             let mut pty = pty_lock.borrow_mut();
             let winsize: &mut [u8] = pty.winsize.deref_mut();
@@ -77,7 +77,7 @@ impl Resource for PtyWinsize {
         }
     }
 
-    fn sync(&self) -> Result<usize> {
+    fn sync(&mut self) -> Result<usize> {
         Ok(0)
     }
 
@@ -85,10 +85,10 @@ impl Resource for PtyWinsize {
         match cmd {
             F_GETFL => Ok(self.flags),
             F_SETFL => {
-                self.flags = (self.flags & O_ACCMODE) | (arg & ! O_ACCMODE);
+                self.flags = (self.flags & O_ACCMODE) | (arg & !O_ACCMODE);
                 Ok(0)
-            },
-            _ => Err(Error::new(EINVAL))
+            }
+            _ => Err(Error::new(EINVAL)),
         }
     }
 

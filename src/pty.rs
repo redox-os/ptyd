@@ -51,9 +51,7 @@ impl Pty {
         let lfl = self.termios.c_lflag;
         let cc = self.termios.c_cc;
 
-        let is_cc = |b: u8, i: usize| -> bool {
-            b != 0 && b == cc[i]
-        };
+        let is_cc = |b: u8, i: usize| -> bool { b != 0 && b == cc[i] };
 
         let inlcr = ifl & INLCR == INLCR;
         let igncr = ifl & IGNCR == IGNCR;
@@ -246,7 +244,7 @@ impl Pty {
         let vtime = cc[VTIME] as u64;
 
         // http://unixwiz.net/techtips/termios-vmin-vtime.html
-        if ! icanon {
+        if !icanon {
             if vtime == 0 {
                 // No timeout specified
                 if vmin == 0 {
@@ -266,7 +264,7 @@ impl Pty {
                 // Timeout specified using vtime
                 if vmin == 0 {
                     // Return when any data is available or the timer expires
-                    if ! self.cooked.is_empty() {
+                    if !self.cooked.is_empty() {
                         self.mosi.push_back(self.cooked.clone());
                         self.cooked.clear();
                     } else {
@@ -290,7 +288,7 @@ impl Pty {
                     if self.cooked.len() >= vmin {
                         self.mosi.push_back(self.cooked.clone());
                         self.cooked.clear();
-                    } else if ! self.cooked.is_empty() {
+                    } else if !self.cooked.is_empty() {
                         if let Some(timeout_character) = self.timeout_character {
                             if self.timeout_count >= timeout_character.wrapping_add(vtime) {
                                 self.timeout_character = None;

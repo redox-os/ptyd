@@ -1,6 +1,7 @@
 [package]
 name = "ptyd"
 version = "0.1.0"
+edition = "2021"
 
 [dependencies]
 redox-daemon = "0.1"

@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::str;
 
@@ -8,13 +8,13 @@ use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT};
 use syscall::flag::{EventFlags, MODE_CHR};
 use syscall::scheme::SchemeBlockMut;
 
-use master::PtyMaster;
-use pgrp::PtyPgrp;
-use pty::Pty;
-use resource::Resource;
-use slave::PtySlave;
-use termios::PtyTermios;
-use winsize::PtyWinsize;
+use crate::controlterm::PtyControlTerm;
+use crate::pgrp::PtyPgrp;
+use crate::pty::Pty;
+use crate::resource::Resource;
+use crate::subterm::PtySubTerm;
+use crate::termios::PtyTermios;
+use crate::winsize::PtyWinsize;
 
 pub struct PtyScheme {
     next_id: usize,
@@ -39,20 +39,22 @@ impl SchemeBlockMut for PtyScheme {
             self.next_id += 1;
 
             let pty = Rc::new(RefCell::new(Pty::new(id)));
-            self.handles.insert(id, Box::new(PtyMaster::new(pty, flags)));
+            self.handles
+                .insert(id, Box::new(PtyControlTerm::new(pty, flags)));
 
             Ok(Some(id))
         } else {
-            let master_id = path.parse::<usize>().or(Err(Error::new(EINVAL)))?;
+            let control_term_id = path.parse::<usize>().or(Err(Error::new(EINVAL)))?;
             let pty = {
-                let handle = self.handles.get(&master_id).ok_or(Error::new(ENOENT))?;
+                let handle = self.handles.get(&control_term_id).ok_or(Error::new(ENOENT))?;
                 handle.pty()
             };
 
             let id = self.next_id;
             self.next_id += 1;
 
-            self.handles.insert(id, Box::new(PtySlave::new(pty, flags)));
+            self.handles
+                .insert(id, Box::new(PtySubTerm::new(pty, flags)));
 
             Ok(Some(id))
         }
@@ -83,12 +85,12 @@ impl SchemeBlockMut for PtyScheme {
     }
 
     fn read(&mut self, id: usize, buf: &mut [u8]) -> Result<Option<usize>> {
-        let handle = self.handles.get(&id).ok_or(Error::new(EBADF))?;
+        let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.read(buf)
     }
 
     fn write(&mut self, id: usize, buf: &[u8]) -> Result<Option<usize>> {
-        let handle = self.handles.get(&id).ok_or(Error::new(EBADF))?;
+        let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.write(buf)
     }
 
@@ -103,7 +105,7 @@ impl SchemeBlockMut for PtyScheme {
     }
 
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<Option<usize>> {
-        let handle = self.handles.get(&id).ok_or(Error::new(EBADF))?;
+        let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.path(buf).map(Some)
     }
 
@@ -119,7 +121,7 @@ impl SchemeBlockMut for PtyScheme {
     }
 
     fn fsync(&mut self, id: usize) -> Result<Option<usize>> {
-        let handle = self.handles.get(&id).ok_or(Error::new(EBADF))?;
+        let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.sync().map(Some)
     }
 

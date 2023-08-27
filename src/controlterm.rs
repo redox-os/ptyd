@@ -1,33 +1,33 @@
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
-use syscall::error::{Error, Result, EINVAL, EAGAIN};
+use syscall::error::{Error, Result, EAGAIN, EINVAL};
 use syscall::flag::{EventFlags, F_GETFL, F_SETFL, O_ACCMODE, O_NONBLOCK};
 
-use pty::Pty;
-use resource::Resource;
+use crate::pty::Pty;
+use crate::resource::Resource;
 
 /// Read side of a pipe
 #[derive(Clone)]
-pub struct PtyMaster {
+pub struct PtyControlTerm {
     pty: Rc<RefCell<Pty>>,
     flags: usize,
     notified_read: bool,
-    notified_write: bool
+    notified_write: bool,
 }
 
-impl PtyMaster {
+impl PtyControlTerm {
     pub fn new(pty: Rc<RefCell<Pty>>, flags: usize) -> Self {
-        PtyMaster {
+        PtyControlTerm {
             pty: pty,
             flags: flags,
             notified_read: false,
-            notified_write: false
+            notified_write: false,
         }
     }
 }
 
-impl Resource for PtyMaster {
+impl Resource for PtyControlTerm {
     fn boxed_clone(&self) -> Box<dyn Resource> {
         Box::new(self.clone())
     }
@@ -40,11 +40,14 @@ impl Resource for PtyMaster {
         self.flags
     }
 
-    fn path(&self, buf: &mut [u8]) -> Result<usize> {
+    fn path(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.pty.borrow_mut().path(buf)
     }
 
-    fn read(&self, buf: &mut [u8]) -> Result<Option<usize>> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>> {
+        
+        self.notified_read = false;
+
         let mut pty = self.pty.borrow_mut();
 
         if let Some(packet) = pty.miso.pop_front() {
@@ -71,7 +74,7 @@ impl Resource for PtyMaster {
         }
     }
 
-    fn write(&self, buf: &[u8]) -> Result<Option<usize>> {
+    fn write(&mut self, buf: &[u8]) -> Result<Option<usize>> {
         let mut pty = self.pty.borrow_mut();
 
         if pty.mosi.len() >= 64 {
@@ -83,7 +86,7 @@ impl Resource for PtyMaster {
         Ok(Some(buf.len()))
     }
 
-    fn sync(&self) -> Result<usize> {
+    fn sync(&mut self) -> Result<usize> {
         Ok(0)
     }
 
@@ -91,10 +94,10 @@ impl Resource for PtyMaster {
         match cmd {
             F_GETFL => Ok(self.flags),
             F_SETFL => {
-                self.flags = (self.flags & O_ACCMODE) | (arg & ! O_ACCMODE);
+                self.flags = (self.flags & O_ACCMODE) | (arg & !O_ACCMODE);
                 Ok(0)
-            },
-            _ => Err(Error::new(EINVAL))
+            }
+            _ => Err(Error::new(EINVAL)),
         }
     }
 
@@ -117,7 +120,7 @@ impl Resource for PtyMaster {
             self.notified_read = false;
         }
 
-        if ! self.notified_write {
+        if !self.notified_write {
             self.notified_write = true;
             events |= syscall::EVENT_WRITE;
         }
