@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-redox-daemon = "0.1"
-redox_syscall = "0.2.12"
+redox-daemon = "0.1.1"
+redox_syscall = "0.3"
 redox_termios = "0.1.2"
