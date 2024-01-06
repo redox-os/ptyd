@@ -3,10 +3,10 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::str;
 
+use redox_scheme::SchemeBlockMut;
 use syscall::data::Stat;
 use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT};
 use syscall::flag::{EventFlags, MODE_CHR};
-use syscall::scheme::SchemeBlockMut;
 
 use crate::controlterm::PtyControlTerm;
 use crate::pgrp::PtyPgrp;
