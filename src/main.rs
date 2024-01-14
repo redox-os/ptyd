@@ -1,9 +1,9 @@
-use event::{user_data, EventQueue, EventFlags};
-use libredox::errno::{EAGAIN, EWOULDBLOCK};
+use event::{user_data, EventFlags, EventQueue};
+use libredox::errno::{EAGAIN, EBADF, EWOULDBLOCK};
 use libredox::error::Error;
-use libredox::{Fd, flag};
+use libredox::{flag, Fd};
 
-use redox_scheme::SignalBehavior;
+use redox_scheme::{Request, SignalBehavior, Socket};
 use syscall::data::TimeSpec;
 
 mod controlterm;
@@ -26,24 +26,26 @@ fn main() {
             }
         }
 
-        let event_queue = EventQueue::<EventSource>::new()
-            .expect("pty: failed to open event:");
+        let event_queue = EventQueue::<EventSource>::new().expect("pty: failed to open event:");
 
         let time_path = format!("time:{}", flag::CLOCK_MONOTONIC);
-        let mut time_file = Fd::open(&time_path, flag::O_NONBLOCK, 0)
-            .expect("pty: failed to open time:");
+        let mut time_file =
+            Fd::open(&time_path, flag::O_NONBLOCK, 0).expect("pty: failed to open time:");
 
-        let socket = redox_scheme::Socket::nonblock("pty")
-            .expect("pty: failed to create pty scheme");
+        let socket =
+            redox_scheme::Socket::nonblock("pty").expect("pty: failed to create pty scheme");
 
         libredox::call::setrens(0, 0).expect("ptyd: failed to enter null namespace");
 
-        daemon.ready().expect("pty: failed to notify parent");
-
-        event_queue.subscribe(socket.inner().raw(), EventSource::Socket, EventFlags::READ)
+        event_queue
+            .subscribe(socket.inner().raw(), EventSource::Socket, EventFlags::READ)
             .expect("pty: failed to watch events on pty:");
-        event_queue.subscribe(time_file.raw(), EventSource::Time, EventFlags::READ)
+        event_queue
+            .subscribe(time_file.raw(), EventSource::Time, EventFlags::READ)
             .expect("pty: failed to watch events on time:");
+
+        println!("ptyd daemon ready");
+        daemon.ready().expect("pty: failed to notify parent");
 
         //TODO: do not set timeout if not necessary
         timeout(&mut time_file).expect("pty: failed to set timeout");
@@ -51,23 +53,18 @@ fn main() {
         let mut scheme = PtyScheme::new();
         let mut todo = Vec::new();
         let mut timeout_count = 0u64;
+
+        scan_requests(&socket, &mut scheme, &mut todo).expect("pty: could not scan requests");
+        do_todos(&socket, &mut scheme, &mut todo);
+        issue_events(&socket, &mut scheme);
+
         for event_res in event_queue {
             let event = event_res.expect("pty: failed to read from event queue");
 
             match event.user_data {
                 EventSource::Socket => {
-                    let request = match socket.next_request(SignalBehavior::Restart) {
-                        Ok(Some(req)) => req,
-                        Ok(None) => break,
-                        Err(Error { errno: EAGAIN | EWOULDBLOCK }) => continue,
-                        Err(other) => panic!("pty: failed to read from socket: {other}"),
-                    };
-                    if let Ok(response) = request.handle_scheme_block_mut(&mut scheme) {
-                        let _ = socket
-                            .write_response(response, SignalBehavior::Restart)
-                            .expect("pty: failed to write responses to pty scheme");
-                    } else {
-                        todo.push(request);
+                    if scan_requests(&socket, &mut scheme, &mut todo).is_err() {
+                        break;
                     }
                 }
                 EventSource::Time => {
@@ -81,30 +78,63 @@ fn main() {
                 }
             }
 
-            let mut i = 0;
-            while i < todo.len() {
-                if let Ok(response) = todo[i].handle_scheme_block_mut(&mut scheme) {
-                    todo.remove(i);
-                    socket
-                        .write_response(response, SignalBehavior::Restart)
-                        .expect("pty: failed to write responses to pty scheme");
-                } else {
-                    i += 1;
-                }
-            }
-
-            for (id, handle) in scheme.handles.iter_mut() {
-                let events = handle.events();
-                if events != syscall::EventFlags::empty() {
-                    socket.post_fevent(*id, events.bits())
-                        .expect("pty: failed to send scheme event");
-                }
-            }
+            do_todos(&socket, &mut scheme, &mut todo);
+            issue_events(&socket, &mut scheme);
         }
 
         std::process::exit(0);
     })
     .expect("pty: failed to daemonize");
+}
+
+fn scan_requests(
+    socket: &Socket,
+    scheme: &mut PtyScheme,
+    todo: &mut Vec<Request>,
+) -> libredox::error::Result<()> {
+    loop {
+        let request = match socket.next_request(SignalBehavior::Restart) {
+            Ok(Some(req)) => req,
+            Ok(None) => return Err(Error::new(EBADF)),
+            Err(Error {
+                errno: EAGAIN | EWOULDBLOCK,
+            }) => break,
+            Err(other) => panic!("pty: failed to read from socket: {other}"),
+        };
+        if let Ok(response) = request.handle_scheme_block_mut(scheme) {
+            let _ = socket
+                .write_response(response, SignalBehavior::Restart)
+                .expect("pty: failed to write responses to pty scheme");
+        } else {
+            todo.push(request);
+        }
+    }
+    Ok(())
+}
+
+fn do_todos(socket: &Socket, scheme: &mut PtyScheme, todo: &mut Vec<Request>) {
+    let mut i = 0;
+    while i < todo.len() {
+        if let Ok(response) = todo[i].handle_scheme_block_mut(scheme) {
+            todo.remove(i);
+            socket
+                .write_response(response, SignalBehavior::Restart)
+                .expect("pty: failed to write responses to pty scheme");
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn issue_events(socket: &Socket, scheme: &mut PtyScheme) {
+    for (id, handle) in scheme.handles.iter_mut() {
+        let events = handle.events();
+        if events != syscall::EventFlags::empty() {
+            socket
+                .post_fevent(*id, events.bits())
+                .expect("pty: failed to send scheme event");
+        }
+    }
 }
 
 fn timeout(time_file: &mut Fd) -> libredox::error::Result<()> {
