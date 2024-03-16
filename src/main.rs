@@ -3,7 +3,8 @@ use libredox::errno::{EAGAIN, EBADF, EWOULDBLOCK};
 use libredox::error::Error;
 use libredox::{flag, Fd};
 
-use redox_scheme::{Request, SignalBehavior, Socket};
+use redox_scheme::{CallRequest, RequestKind, Response, SignalBehavior, Socket};
+use syscall::EINTR;
 use syscall::data::TimeSpec;
 
 mod controlterm;
@@ -87,39 +88,57 @@ fn main() {
     .expect("pty: failed to daemonize");
 }
 
+struct Todo {
+    request: CallRequest,
+    cancelling: bool,
+}
+
 fn scan_requests(
     socket: &Socket,
     scheme: &mut PtyScheme,
-    todo: &mut Vec<Request>,
+    todo: &mut Vec<Todo>,
 ) -> libredox::error::Result<()> {
     loop {
         let request = match socket.next_request(SignalBehavior::Restart) {
             Ok(Some(req)) => req,
             Ok(None) => return Err(Error::new(EBADF)),
-            Err(Error {
-                errno: EAGAIN | EWOULDBLOCK,
-            }) => break,
+            Err(error) if error.errno == EWOULDBLOCK || error.errno == EAGAIN => break,
             Err(other) => panic!("pty: failed to read from socket: {other}"),
         };
-        if let Ok(response) = request.handle_scheme_block_mut(scheme) {
-            let _ = socket
-                .write_response(response, SignalBehavior::Restart)
-                .expect("pty: failed to write responses to pty scheme");
-        } else {
-            todo.push(request);
+
+        match request.kind() {
+            RequestKind::Cancellation(req) => {
+                if let Some(idx) = todo.iter().position(|t| t.request.request().request_id() == req.id) {
+                    todo[idx].cancelling = true;
+                }
+            }
+            RequestKind::Call(request) => {
+                if let Ok(response) = request.handle_scheme_block_mut(scheme) {
+                    let _ = socket
+                        .write_response(response, SignalBehavior::Restart)
+                        .expect("pty: failed to write responses to pty scheme");
+                } else {
+                    todo.push(Todo { request, cancelling: false });
+                }
+            }
+            _ => (),
         }
     }
     Ok(())
 }
 
-fn do_todos(socket: &Socket, scheme: &mut PtyScheme, todo: &mut Vec<Request>) {
+fn do_todos(socket: &Socket, scheme: &mut PtyScheme, todo: &mut Vec<Todo>) {
     let mut i = 0;
     while i < todo.len() {
-        if let Ok(response) = todo[i].handle_scheme_block_mut(scheme) {
+        if let Ok(response) = todo[i].request.handle_scheme_block_mut(scheme) {
             todo.remove(i);
             socket
                 .write_response(response, SignalBehavior::Restart)
                 .expect("pty: failed to write responses to pty scheme");
+        } else if todo[i].cancelling {
+            socket.write_response(Response::new(&todo[i].request, Err(Error::new(EINTR).into())), SignalBehavior::Restart)
+                .expect("pty: failed to write responses to pty scheme");
+            todo.remove(i);
         } else {
             i += 1;
         }
