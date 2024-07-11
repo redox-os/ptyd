@@ -29,7 +29,7 @@ fn main() {
 
         let event_queue = EventQueue::<EventSource>::new().expect("pty: failed to open event:");
 
-        let time_path = format!("time:{}", flag::CLOCK_MONOTONIC);
+        let time_path = format!("/scheme/time/{}", flag::CLOCK_MONOTONIC);
         let mut time_file =
             Fd::open(&time_path, flag::O_NONBLOCK, 0).expect("pty: failed to open time:");
 
