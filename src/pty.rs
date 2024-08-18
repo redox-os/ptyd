@@ -32,7 +32,7 @@ impl Pty {
     }
 
     pub fn path(&self, buf: &mut [u8]) -> Result<usize> {
-        let path_str = format!("pty:{}", self.id);
+        let path_str = format!("/scheme/pty/{}", self.id);
         let path = path_str.as_bytes();
 
         let mut i = 0;
