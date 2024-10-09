@@ -84,12 +84,12 @@ impl SchemeBlockMut for PtyScheme {
         Ok(Some(id))
     }
 
-    fn read(&mut self, id: usize, buf: &mut [u8]) -> Result<Option<usize>> {
+    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _fcntl_flags: u32) -> Result<Option<usize>> {
         let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.read(buf)
     }
 
-    fn write(&mut self, id: usize, buf: &[u8]) -> Result<Option<usize>> {
+    fn write(&mut self, id: usize, buf: &[u8], _offset: u64, _fcntl_flags: u32) -> Result<Option<usize>> {
         let handle = self.handles.get_mut(&id).ok_or(Error::new(EBADF))?;
         handle.write(buf)
     }
