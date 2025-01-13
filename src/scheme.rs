@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::str;
 
-use redox_scheme::SchemeBlockMut;
+use redox_scheme::SchemeBlock;
 use syscall::data::Stat;
 use syscall::error::{Error, Result, EBADF, EINVAL, ENOENT};
 use syscall::flag::{EventFlags, MODE_CHR};
@@ -30,7 +30,7 @@ impl PtyScheme {
     }
 }
 
-impl SchemeBlockMut for PtyScheme {
+impl SchemeBlock for PtyScheme {
     fn open(&mut self, path: &str, flags: usize, _uid: u32, _gid: u32) -> Result<Option<usize>> {
         let path = path.trim_matches('/');
 

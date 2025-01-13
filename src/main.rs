@@ -113,7 +113,7 @@ fn scan_requests(
                 }
             }
             RequestKind::Call(request) => {
-                if let Some(response) = request.handle_scheme_block_mut(scheme) {
+                if let Some(response) = request.handle_scheme_block(scheme) {
                     let _ = socket
                         .write_response(response, SignalBehavior::Restart)
                         .expect("pty: failed to write responses to pty scheme");
@@ -130,7 +130,7 @@ fn scan_requests(
 fn do_todos(socket: &Socket, scheme: &mut PtyScheme, todo: &mut Vec<Todo>) {
     let mut i = 0;
     while i < todo.len() {
-        if let Some(response) = todo[i].request.handle_scheme_block_mut(scheme) {
+        if let Some(response) = todo[i].request.handle_scheme_block(scheme) {
             todo.remove(i);
             socket
                 .write_response(response, SignalBehavior::Restart)
