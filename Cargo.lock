@@ -49,9 +49,9 @@ dependencies = [
 
 [[package]]
 name = "redox-scheme"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95624e20d2c1808f7ca0820720d30aad9f5d2fc404e1ef379431ad7a790c3f7e"
+checksum = "63e7f06e1b19d8143043e959fbd7b76a37e759e3e9c6bbfc9c91c496b0b44d20"
 dependencies = [
  "libredox",
  "redox_syscall",
@@ -69,9 +69,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.7"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b6dfecf2c74bce2466cabf93f6664d6998a69eb21e39f4207930065b27b771f"
+checksum = "03a862b389f93e68874fbf580b9de08dd02facb9a788ebadaf4a3fd33cf58834"
 dependencies = [
  "bitflags",
 ]
